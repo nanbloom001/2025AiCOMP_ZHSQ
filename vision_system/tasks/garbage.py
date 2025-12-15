@@ -10,25 +10,36 @@ except ImportError:
     from ..config import BIN_CLASS_NAMES, SPECIFIC_TRASH_NAMES, TRASH_COMMON_NAMES, TRASH_MAPPING
 
 class GarbageTask(BaseTask):
+    """
+    垃圾分类任务 (Slave Side)。
+    
+    功能：
+    1. 加载多个模型：垃圾桶检测 (best_bin)、垃圾检测 (best_trash)、分类模型 (best_classify)。
+    2. 实时检测视野中的垃圾桶和垃圾。
+    3. 判定垃圾类型（可回收、厨余、有害、其他）以及投放是否正确。
+    4. 直接发布语音指令进行播报。
+    """
     def __init__(self, model_loader, data_manager):
         super().__init__(model_loader, data_manager)
+        # 加载模型
         self.bin_model = self.model_loader.load_model("best_bin")
         self.trash_model = self.model_loader.load_model("best_trash")
         self.cls_model = self.model_loader.load_model("best_classify")
         
-        # Display mapping
+        # 显示映射表 (中文 -> 英文)
         self.DISPLAY_MAP = {
             '可回收': 'Recycle', '厨余': 'Kitchen', '有害': 'Harmful', '其他': 'Other',
             '打开': 'Open', '关闭': 'Close', '正确': 'CORRECT', '错误': 'WRONG',
             '未知': 'Unknown', '未检测到垃圾': 'Empty', '无': 'None'
         }
         
-        # Direct Voice Publisher
+        # 语音发布者
         self.voice_pub = rospy.Publisher("/vision/driver/voice/cmd", String, queue_size=1)
         
         self.reset_state()
 
     def start(self, seq_id):
+        """启动任务。防止重复启动。"""
         # Prevent resetting if already active (debounce)
         if self.active:
             rospy.logwarn(f"[GarbageTask] Received start command but task is already active. Ignoring reset.")
@@ -39,6 +50,7 @@ class GarbageTask(BaseTask):
         rospy.loginfo("[GarbageTask] State reset. Starting observation...")
 
     def reset_state(self):
+        """重置内部状态变量。"""
         self.start_time = None
         self.last_process_time = 0
         self.last_bin_detect_time = 0

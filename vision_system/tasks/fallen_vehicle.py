@@ -12,15 +12,25 @@ from stitching import Stitcher
 import config
 
 class FallenVehicleTask(BaseTask):
+    """
+    倒车检测与全景拼接任务 (Slave Side)。
+    
+    功能：
+    1. 控制机器人旋转一周，采集多张图像。
+    2. 使用 Stitcher 算法将采集的图像拼接成全景图。
+    3. 在全景图上运行 YOLO 模型检测倒地车辆 (fallen_vehicle)。
+    4. 返回检测结果。
+    """
     def __init__(self, model_loader, data_manager):
         super().__init__(model_loader, data_manager)
+        # 加载 YOLO 模型 (模型名称 'eb' 对应倒车检测)
         self.model = self.model_loader.load_yolo_model("eb")
         
-        # Robot Control
+        # 机器人运动控制
         self.cmd_vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
         self.tf_listener = tf.TransformListener()
         
-        # State
+        # 状态变量
         self.latest_image = None
         self.lock = threading.Lock()
         self.is_processing = False
@@ -30,6 +40,7 @@ class FallenVehicleTask(BaseTask):
         self.sequence_finished = False
 
     def start(self, seq_id):
+        """启动任务：重置状态并开始后台处理线程。"""
         super().start(seq_id)
         self.sequence_finished = False
         self.is_processing = False

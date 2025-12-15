@@ -20,37 +20,46 @@ from tasks.garbage import GarbageTask
 from tasks.fallen_vehicle import FallenVehicleTask
 
 class YOLONode:
+    """
+    YOLO 驱动节点 (YOLO Driver Node)
+    
+    功能:
+    1. 加载并管理多个 YOLO 模型 (红绿灯, 娃娃, 火焰等)。
+    2. 响应 Vision Master 的控制指令，动态切换当前活跃的模型。
+    3. 接收图像流并进行推理。
+    4. 发布检测结果 (类别, 置信度, 边界框)。
+    """
     def __init__(self):
         rospy.init_node("yolo_node", anonymous=False)
         
         self.data_manager = DataManager()
         self.model_loader = YOLOLoader(config)
         
-        # Load all YOLO models (Driver Mode)
-        # We load them all but only run one at a time based on command
-        # Map task names to config model names
+        # 加载所有 YOLO 模型 (驱动模式)
+        # 我们预加载所有模型，但根据指令一次只运行一个，以节省资源并避免冲突
+        # 将任务名称映射到配置中的模型名称
         self.models = {
             "traffic_light": self.model_loader.load_yolo_model("lights"),
             "doll": self.model_loader.load_yolo_model("people_v3_s"),
             "fire": self.model_loader.load_yolo_model("fire"),
-            "garbage": GarbageTask(self.model_loader, self.data_manager), # Use Task instead of Model
+            "garbage": GarbageTask(self.model_loader, self.data_manager), # 使用 Task 类封装复杂逻辑
             "fallen_vehicle": FallenVehicleTask(self.model_loader, self.data_manager),
         }
         
         self.active_model_name = None
         self.active_model = None
         
-        # ROS setup
+        # ROS 初始化设置
         self.image_topic = rospy.get_param("~image_topic", config.DEFAULT_CONFIG["image_topic"])
         headless_param = rospy.get_param("~headless", config.DEFAULT_CONFIG["headless"])
         
-        # Setup display environment
+        # 设置显示环境 (GUI)
         self.use_gui = setup_display_env(headless_param)
         
-        # Driver Interface
-        # cmd: "start <model_name>" / "stop"
+        # 驱动接口 (Driver Interface)
+        # 订阅指令: "start <model_name>" (启动指定模型) / "stop" (停止当前模型)
         self.driver_cmd_sub = rospy.Subscriber("/vision/driver/yolo/cmd", String, self.driver_cmd_cb)
-        # result: JSON string {"class_ids": [...], "scores": [...], "boxes": [...]}
+        # 发布结果: JSON 字符串 {"class_ids": [...], "scores": [...], "boxes": [...]}
         self.driver_res_pub = rospy.Publisher("/vision/driver/yolo/result", String, queue_size=1)
         
         self.img_sub = rospy.Subscriber(self.image_topic, Image, self.image_callback, queue_size=1, buff_size=2**24)
@@ -60,15 +69,20 @@ class YOLONode:
         self.current_frame_id = 0
         self.last_processed_id = -1
         
-        # Modes: 0=Freeze, 1=Pause(Raw), 2=Run(Driver Enabled)
+        # 运行模式: 
+        # 0 = 冻结 (Freeze)
+        # 1 = 暂停 (Pause, 显示原图)
+        # 2 = 运行 (Run, 启用驱动逻辑)
         self.mode = 2
-        self.is_ros_triggered = False # Flag to distinguish ROS vs Manual trigger
+        
+        # 标记是否由 ROS 触发 (用于区分手动调试和自动运行)
+        self.is_ros_triggered = False 
         self.best_score = -1.0
         self.task_session_id = 0
         
         self.start_console()
         
-        # FPS calculation
+        # FPS 计算
         self.fps_start_time = time.time()
         self.fps_frame_count = 0
         self.current_fps = 0.0
@@ -82,7 +96,7 @@ class YOLONode:
                 self.use_gui = False
 
     def _stop_active_model(self):
-        """Stop current active model/task safely."""
+        """安全停止当前活跃的模型或任务。"""
         if self.active_model is not None and hasattr(self.active_model, "stop"):
             try:
                 self.active_model.stop()
@@ -92,12 +106,13 @@ class YOLONode:
         self.active_model_name = None
 
     def _start_model_by_name(self, model_name: str, is_ros=False):
+        """根据名称启动模型。"""
         model = self.models.get(model_name)
         if model is None:
             rospy.logwarn(f"[YOLO Driver] Model not loaded or unknown: {model_name}")
             return
 
-        # Stop previous task if any
+        # 如果切换了模型，先停止前一个
         if self.active_model_name != model_name:
             self._stop_active_model()
 
@@ -107,23 +122,24 @@ class YOLONode:
         self.best_score = -1.0
         self.task_session_id = int(time.time() * 1000)
         
-        # If it's a Task (BaseTask), call start()
+        # 如果是 Task (BaseTask 子类)，调用 start()
         if hasattr(model, "start"):
             try:
                 model.start(seq_id=0)
             except TypeError:
-                # Backward compatibility if signature is start(seq_id)
+                # 兼容旧接口 start(seq_id)
                 model.start(0)
         rospy.loginfo(f"[YOLO Driver] Started model: {model_name} (ROS Triggered: {is_ros})")
 
     def start_console(self):
+        """启动控制台输入监听线程，用于手动调试。"""
         def input_loop():
             print("\n" + "="*40)
             print("       YOLO Node (Driver Mode)")
             print("="*40)
-            print(" [0] Freeze (Stop updates)")
-            print(" [1] Pause (Raw Image)")
-            print(" [2] Auto (Listen to ROS)")
+            print(" [0] Freeze (冻结画面)")
+            print(" [1] Pause (暂停处理，显示原图)")
+            print(" [2] Auto (自动模式，监听 ROS 指令)")
             print("-" * 20)
             
             model_keys = list(self.models.keys())
@@ -170,6 +186,7 @@ class YOLONode:
         t.start()
 
     def driver_cmd_cb(self, msg):
+        """处理来自 Vision Master 的控制指令。"""
         cmd = msg.data.strip()
         parts = cmd.split()
         action = parts[0].lower()
@@ -183,6 +200,7 @@ class YOLONode:
             rospy.loginfo("[YOLO Driver] Stopped")
 
     def image_callback(self, msg):
+        """接收图像回调，将 ROS 图像转换为 OpenCV 格式。"""
         img = ImageProcessor.imgmsg_to_cv2(msg)
         if img is not None:
             with self.frame_lock:
@@ -190,6 +208,7 @@ class YOLONode:
                 self.current_frame_id += 1
 
     def run(self):
+        """主循环：处理图像、运行推理、发布结果、显示界面。"""
         rate = rospy.Rate(30)
         while not rospy.is_shutdown():
             if self.mode == 0:
@@ -206,16 +225,16 @@ class YOLONode:
                 display_img = frame.copy()
                 inference_time = 0.0
                 
-                # Run Inference if Model Active
-                # Use local reference to avoid race condition with callback
+                # 如果有活跃模型且在运行模式，则执行推理
+                # 使用局部引用避免与回调发生竞争条件
                 current_model = self.active_model
                 if self.mode == 2 and current_model:
                     t_start = time.time()
                     
-                    # Special handling for Tasks (GarbageTask, FallenVehicleTask)
-                    # Check if it has a 'process' method or is instance of BaseTask
+                    # 特殊处理 Task 类 (GarbageTask, FallenVehicleTask)
+                    # 检查是否有 'process' 方法或是否为 BaseTask 实例
                     if hasattr(current_model, 'process') and hasattr(current_model, 'stop'):
-                        # Task.process returns (res_img, result_str)
+                        # Task.process 返回 (res_img, result_str)
                         res_img, result_str = current_model.process(frame)
                         display_img = res_img
                         inference_time = (time.time() - t_start) * 1000
@@ -223,7 +242,7 @@ class YOLONode:
                         if result_str:
                             self.driver_res_pub.publish(result_str)
 
-                        # Save Result Image (Full Visualization)
+                        # 保存结果图片 (完整可视化)
                         if config.SAVE_RESULT_IMAGES and result_str:
                             try:
                                 if not os.path.exists(config.SAVE_RESULT_DIR):
@@ -237,13 +256,13 @@ class YOLONode:
                                 rospy.logwarn(f"Failed to save image: {e}")
                             
                     else:
-                        # Standard YOLO Model
-                        # infer returns: res_img, raw_res, (boxes, scores, class_ids)
-                        # We only need the raw data
+                        # 标准 YOLO 模型
+                        # infer 返回: res_img, raw_res, (boxes, scores, class_ids)
+                        # 我们只需要原始数据
                         _, _, (boxes, scores, class_ids) = current_model.infer(frame)
                         inference_time = (time.time() - t_start) * 1000
                         
-                        # Publish Result
+                        # 发布结果
                         if len(boxes) > 0:
                             res_data = {
                                 "model": self.active_model_name,
@@ -253,28 +272,27 @@ class YOLONode:
                             }
                             self.driver_res_pub.publish(json.dumps(res_data))
                         
-                        # Visualization
+                        # 可视化绘制
                         for i, box in enumerate(boxes):
                             class_id = int(class_ids[i])
                             score = float(scores[i])
                             
-                            # Default Color
+                            # 默认颜色
                             color = (0, 255, 0)
                             
-                            # Special Logic for Doll/People
+                            # 针对娃娃/人物的特殊逻辑
                             if self.active_model_name == "doll":
-                                # Assuming class names are available
+                                # 假设有 class_names 属性
                                 if hasattr(current_model, "class_names") and 0 <= class_id < len(current_model.class_names):
                                     class_name = current_model.class_names[class_id]
-                                    # Logic: Community vs Non-Community
-                                    # Based on config, classes are: ['bad0'...'bad3', 'coffee', 'cook', 'dective', 'doctor', 'engineer', 'fireman', 'gardener', 'guitar', 'it', 'office', 'painter', 'photo', 'postman', 'professor', 'rapper', 'security', 'teacher']
-                                    # Assuming 'bad' prefix means non-community (red), others are community (green)
+                                    # 逻辑: 社区人员 vs 非社区人员
+                                    # 假设 'bad' 前缀表示非社区人员 (红色)，其他为社区人员 (绿色)
                                     if class_name.startswith("bad"):
-                                        color = (0, 0, 255) # Red
+                                        color = (0, 0, 255) # 红色
                                     else:
-                                        color = (0, 255, 0) # Green
+                                        color = (0, 255, 0) # 绿色
                                 else:
-                                    # Fallback if no class names
+                                    # 如果没有 class_names，默认绿色
                                     color = (0, 255, 0)
                             
                             cv2.rectangle(
@@ -282,7 +300,7 @@ class YOLONode:
                                 (int(box[0]), int(box[1])),
                                 (int(box[2]), int(box[3])),
                                 color,
-                                3, # Thicker line
+                                3, # 粗线条
                             )
                             
                             if hasattr(current_model, "class_names") and 0 <= class_id < len(current_model.class_names):
@@ -291,20 +309,20 @@ class YOLONode:
                                 class_name = str(class_id)
                             label = f"{class_name}: {score:.2f}"
                             
-                            # Larger Font
+                            # 更大的字体
                             cv2.putText(
                                 display_img,
                                 label,
                                 (int(box[0]), int(box[1] - 10)),
                                 cv2.FONT_HERSHEY_SIMPLEX,
-                                1.0, # Larger font scale
+                                1.0, # 字体缩放
                                 color,
                                 2,
                             )
 
-                        # Save Best Result Image (Only if ROS Triggered)
+                        # 保存最佳结果图片 (仅在 ROS 触发时)
                         if config.SAVE_RESULT_IMAGES and self.is_ros_triggered and len(boxes) > 0:
-                            # Calculate score for this frame (e.g. max confidence)
+                            # 计算当前帧得分 (例如最大置信度)
                             current_score = max(scores) if len(scores) > 0 else 0
                             
                             if current_score > self.best_score:
@@ -313,21 +331,21 @@ class YOLONode:
                                     if not os.path.exists(config.SAVE_RESULT_DIR):
                                         os.makedirs(config.SAVE_RESULT_DIR)
                                     
-                                    # Save/Overwrite the best image for this session
+                                    # 保存/覆盖本次会话的最佳图片
                                     filename = f"yolo_{self.active_model_name}_{self.task_session_id}_best.jpg"
                                     filepath = os.path.join(config.SAVE_RESULT_DIR, filename)
                                     cv2.imwrite(filepath, display_img)
                                 except Exception as e:
                                     rospy.logwarn(f"Failed to save image: {e}")
                 
-                # Calculate FPS
+                # 计算 FPS
                 self.fps_frame_count += 1
                 if time.time() - self.fps_start_time > 1.0:
                     self.current_fps = self.fps_frame_count / (time.time() - self.fps_start_time)
                     self.fps_frame_count = 0
                     self.fps_start_time = time.time()
                 
-                # Draw Info Overlay
+                # 绘制信息叠加层
                 mode_str = ["Freeze", "Pause", "Auto"][self.mode]
                 model_str = self.active_model_name if self.active_model_name else "NONE"
                 info_text = f"FPS: {self.current_fps:.1f} | Latency: {inference_time:.1f}ms | {mode_str} | Model: {model_str}"

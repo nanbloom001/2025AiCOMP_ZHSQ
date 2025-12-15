@@ -21,10 +21,12 @@ from nav_manager_mod.task_handler import TaskHandler
 
 class NavigationManager:
     """
-    导航管理器主类。
+    导航管理器主类 (Navigation Manager)。
     
-    负责初始化各个子模块（配置、目标、导航执行器、任务处理器），
-    订阅 ROS 话题，监听键盘输入，并运行主控制循环。
+    功能:
+    1. 协调整个比赛流程：导航 -> 视觉任务 -> 导航。
+    2. 初始化各个子模块（配置、目标加载、导航执行器、任务处理器）。
+    3. 订阅 ROS 话题，监听键盘输入，并运行主控制循环。
     """
     def __init__(self):
         rospy.init_node("navigation_manager", anonymous=False)
@@ -42,7 +44,7 @@ class NavigationManager:
         # 统一使用 /vision/done 接收视觉任务结果
         rospy.Subscriber("/vision/done", String, self.visual_done_cb)
         
-        # Subscribe to unified status topic
+        # 订阅统一的状态话题 (如红绿灯状态)
         rospy.Subscriber("/vision/status", String, self.status_cb)
         rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped, self.amcl_cb)
 
@@ -223,7 +225,7 @@ class NavigationManager:
             
             # 获取任务列表，如果没有则默认为 [Task("none", 0)]
             task_list = goal.tasks if goal.tasks else [Task("none", 0)]
-            task_timeout = None  # extend per-goal task timeout here if needed
+            task_timeout = None  # 如果需要，可在此处扩展每个目标的任务超时时间
 
             if reached:
                 rospy.loginfo("Reached goal %d. Tasks: %s" % (idx, str(task_list)))

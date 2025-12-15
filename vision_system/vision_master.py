@@ -56,7 +56,11 @@ VOICE_ENV = "speak"
 USE_TERMINAL = True
 
 def detect_terminal_cmd():
-    """检测可用终端，失败则回落到当前终端内执行。"""
+    """
+    检测系统可用的终端模拟器。
+    如果找到 gnome-terminal 或 xterm，则返回相应的启动命令模板。
+    否则回落到当前 shell 执行。
+    """
     if not USE_TERMINAL:
         return ["bash", "-lc", "{cmd}"]
 
@@ -77,6 +81,10 @@ TERM_CMD = detect_terminal_cmd()
 
 @dataclass
 class ProcSpec:
+    """
+    子进程规范类 (Process Specification)
+    用于定义和管理一个子进程 (如 YOLO 节点, OCR 节点)。
+    """
     name: str
     env_name: str
     script_path: str
@@ -84,6 +92,7 @@ class ProcSpec:
     process: Optional[subprocess.Popen] = None
 
     def build_command(self) -> List[str]:
+        """构建启动命令，包含 Conda 环境激活。"""
         conda_setup = (
             "if [ -f \"$HOME/miniconda3/etc/profile.d/conda.sh\" ]; then "
             "source $HOME/miniconda3/etc/profile.d/conda.sh; "
@@ -92,7 +101,7 @@ class ProcSpec:
             "else source ~/.bashrc; fi"
         )
         tail = ""
-        # When running inline (no GUI terminal), do NOT block on read.
+        # 如果使用 GUI 终端，添加 read line 以便在进程退出后保持窗口打开，方便查看日志
         if USE_TERMINAL:
             tail = "; echo 'Process exited. Press Enter to close...'; read line"
         cmd = (
@@ -102,18 +111,23 @@ class ProcSpec:
         return [p.format(cmd=cmd) if "{cmd}" in p else p for p in TERM_CMD]
 
     def is_running(self) -> bool:
+        """检查子进程是否正在运行。"""
         if self.process is None:
             return False
         if USE_TERMINAL:
+            # 如果是新开终端，无法直接通过 Popen 对象判断 (因为 Popen 启动的是终端本身)
+            # 这里简单返回 True，实际生产环境可能需要更复杂的 PID 检查
             return True 
         return self.process.poll() is None
 
     def start(self):
+        """启动子进程。"""
         cmd = self.build_command()
         rospy.loginfo(f"[master] Starting {self.name} with env '{self.env_name}'")
         self.process = subprocess.Popen(cmd, start_new_session=True)
 
     def stop(self):
+        """停止子进程。"""
         if self.process:
             rospy.loginfo(f"[master] Stopping {self.name}")
             try:
@@ -124,16 +138,23 @@ class ProcSpec:
             self.process = None
 
 class VisionMasterNode:
+    """
+    视觉主控节点类。
+    负责协调所有视觉相关的子系统和业务逻辑。
+    """
     def __init__(self):
         rospy.init_node("vision_master", anonymous=False)
         
         # 1. 外部接口 (Nav <-> Master)
+        # 接收导航节点的指令
         self.nav_cmd_sub = rospy.Subscriber("/vision/cmd", String, self.nav_cmd_cb)
+        # 发送任务完成结果给导航节点
         self.nav_done_pub = rospy.Publisher("/vision/done", String, queue_size=5)
+        # 发送任务状态给导航节点
         self.nav_status_pub = rospy.Publisher("/vision/status", String, queue_size=5)
         
-        # 2. 业务逻辑任务池
-        # 这些任务类现在是纯逻辑控制器，负责调度 Driver
+        # 2. 业务逻辑任务池 (Logic Tasks)
+        # 这些任务类是纯逻辑控制器，负责调度底层的 Driver (YOLO/OCR)
         self.logic_tasks = {
             "plate": PlateTask(),
             "fire": FireTask(),
@@ -145,27 +166,29 @@ class VisionMasterNode:
         self.active_task_name = None
         
         # 3. 子进程管理
+        # 定义需要启动的子节点及其环境
         self.specs = {
             "yolo": ProcSpec(name="yolo", env_name=YOLO_ENV, script_path=YOLO_SCRIPT),
             "ocr": ProcSpec(name="ocr", env_name=OCR_ENV, script_path=OCR_SCRIPT),
             "voice": ProcSpec(name="voice", env_name=VOICE_ENV, script_path=VOICE_SCRIPT),
         }
         
-        # 启动子进程
+        # 启动所有子进程
         for spec in self.specs.values():
             spec.start()
             time.sleep(1.0)
 
-        # 监控线程
+        # 启动监控线程，定期检查子进程是否存活
         self.monitor_thread = threading.Thread(target=self.monitor_loop, daemon=True)
         self.monitor_thread.start()
         
-        # 启动控制台
+        # 启动控制台，允许手动触发任务
         self.start_console()
         
         rospy.loginfo("[master] Vision Master Initialized.")
 
     def start_console(self):
+        """启动控制台输入监听线程，用于手动调试。"""
         def input_loop():
             print("\n" + "="*40)
             print("       Vision Master Console")
@@ -211,7 +234,7 @@ class VisionMasterNode:
         t.start()
 
     def nav_cmd_cb(self, msg):
-        """处理来自 Nav 的指令"""
+        """处理来自 Nav 的指令。"""
         cmd_str = msg.data.strip()
         parts = cmd_str.split()
         if not parts: return
@@ -230,19 +253,21 @@ class VisionMasterNode:
             self.stop_task(task_type)
 
     def trigger_task(self, task_name, seq_id):
+        """触发指定的逻辑任务。"""
         if task_name in self.logic_tasks:
-            # Stop previous if any
+            # 如果有正在运行的任务，先停止它
             if self.active_task_name and self.active_task_name != task_name:
                 self.stop_task(self.active_task_name)
             
             self.active_task_name = task_name
             rospy.loginfo(f"[master] Starting Logic Task: {task_name} seq={seq_id}")
-            # Start task with a callback to report success
+            # 启动任务，并传入回调函数用于汇报结果和状态
             self.logic_tasks[task_name].start(self.report_success, self.report_status, seq_id)
         else:
             rospy.logwarn(f"[master] Unknown task: {task_name}")
 
     def stop_task(self, task_name):
+        """停止指定的逻辑任务。"""
         if task_name in self.logic_tasks:
             rospy.loginfo(f"[master] Stopping Logic Task: {task_name}")
             self.logic_tasks[task_name].stop()
@@ -250,21 +275,21 @@ class VisionMasterNode:
                 self.active_task_name = None
 
     def report_success(self, result_str):
-        """逻辑任务完成时的回调"""
+        """逻辑任务完成时的回调。"""
         rospy.loginfo(f"[master] Task Finished: {result_str}")
         self.nav_done_pub.publish(result_str)
-        # Auto-stop task after success? Depends on logic.
-        # Usually logic task stops itself internally, but we clear active state here
+        # 任务完成后是否自动停止？通常逻辑任务内部会停止自己，但我们需要在这里清除活跃状态
         if self.active_task_name:
-             # Ideally we check if result_str matches active task
+             # 理想情况下，我们应该检查 result_str 是否匹配当前活跃任务
              pass
 
     def report_status(self, status_str):
-        """逻辑任务状态汇报回调"""
+        """逻辑任务状态汇报回调。"""
         # rospy.loginfo_throttle(1.0, f"[master] Task Status: {status_str}")
         self.nav_status_pub.publish(status_str)
 
     def monitor_loop(self):
+        """监控子进程状态的循环。"""
         rate = rospy.Rate(1)
         while not rospy.is_shutdown():
             for name, spec in self.specs.items():
@@ -273,8 +298,9 @@ class VisionMasterNode:
             rate.sleep()
 
     def run(self):
+        """主运行循环。"""
         rospy.spin()
-        # Shutdown
+        # 节点关闭时，停止所有子进程
         for spec in self.specs.values():
             spec.stop()
 

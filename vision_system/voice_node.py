@@ -34,40 +34,49 @@ ZH_CONFIG = {
 OUTPUT_WAV = "/tmp/robot_voice.wav"
 
 class VoiceNode:
+    """
+    语音合成节点 (Voice Node)
+    
+    功能:
+    1. 接收文本指令并转换为语音 (TTS)。
+    2. 使用 sherpa_onnx 进行离线语音合成。
+    3. 支持队列管理、暂停、跳过和语速调整。
+    4. 自动过滤非中文文本 (根据需求)。
+    """
     def __init__(self):
         print("[VoiceNode] Initializing ROS node...")
         rospy.init_node('voice_node', anonymous=False)
         print("[VoiceNode] ROS node initialized.")
         
-        # 1. 初始化单一模型
+        # 1. 初始化 TTS 模型
         self.tts_engine = self.init_sherpa_model(ZH_CONFIG, "Piper-Huayan (ZH)")
         
-        # 2. 状态与队列
+        # 2. 初始化状态变量与消息队列
         self.msg_queue = queue.Queue()
         self.current_process = None
         self.is_speaking = False
         self.stop_flag = False
         self.default_speed = 1.5
         
-        # 3. ROS 接口
-        # cmd: JSON string { "action": "say"|"stop"|"skip"|"speed", "text": "...", "speed": 1.0, "id": "..." }
+        # 3. 定义 ROS 通信接口
+        # 订阅指令: JSON 字符串 { "action": "say"|"stop"|"skip"|"speed", "text": "...", "speed": 1.0, "id": "..." }
         self.cmd_sub = rospy.Subscriber("/vision/driver/voice/cmd", String, self.cmd_callback)
         
-        # ack: JSON string { "id": "...", "status": "received" }
+        # 发布确认: JSON 字符串 { "id": "...", "status": "received" }
         self.ack_pub = rospy.Publisher("/vision/driver/voice/ack", String, queue_size=5)
         
-        # done: JSON string { "id": "...", "status": "done"|"skipped"|"stopped" }
+        # 发布完成状态: JSON 字符串 { "id": "...", "status": "done"|"skipped"|"stopped" }
         self.done_pub = rospy.Publisher("/vision/driver/voice/done", String, queue_size=5)
         
-        # status: JSON string { "state": "idle"|"speaking", "queue_len": 0 }
+        # 发布实时状态: JSON 字符串 { "state": "idle"|"speaking", "queue_len": 0 }
         self.status_pub = rospy.Publisher("/vision/driver/voice/status", String, queue_size=5)
 
-        # 4. 工作线程
+        # 4. 启动语音合成工作线程
         self.worker_thread = threading.Thread(target=self.process_queue)
         self.worker_thread.daemon = True
         self.worker_thread.start()
         
-        # 5. 状态汇报线程
+        # 5. 启动状态汇报线程
         self.status_thread = threading.Thread(target=self.status_loop)
         self.status_thread.daemon = True
         self.status_thread.start()
@@ -76,6 +85,7 @@ class VoiceNode:
         rospy.loginfo(f"[VoiceNode] Started with single model: Piper-Huayan (ZH)")
 
     def init_sherpa_model(self, cfg, name):
+        """初始化 sherpa_onnx TTS 模型。"""
         if not os.path.exists(cfg["model"]):
             rospy.logwarn(f"[VoiceNode] {name} model not found at: {cfg['model']}")
             return None
@@ -107,6 +117,7 @@ class VoiceNode:
     # Removed old init_model
     
     def start_console(self):
+        """启动控制台输入监听线程，用于手动调试。"""
         def input_loop():
             print("\n" + "="*40)
             print("       Voice Node Console")
@@ -149,6 +160,7 @@ class VoiceNode:
         t.start()
 
     def cmd_callback(self, msg):
+        """处理 ROS 指令回调。"""
         try:
             data = json.loads(msg.data)
             self.handle_command(data)
@@ -157,6 +169,7 @@ class VoiceNode:
             self.handle_command({"action": "say", "text": msg.data})
 
     def handle_command(self, data):
+        """统一处理指令逻辑。"""
         action = data.get("action", "say")
         cmd_id = data.get("id", "unknown")
         
@@ -185,6 +198,7 @@ class VoiceNode:
             rospy.loginfo(f"[VoiceNode] Speed updated to {self.default_speed}")
 
     def kill_aplay(self):
+        """终止当前的音频播放进程。"""
         if self.current_process:
             try:
                 self.current_process.terminate()
@@ -194,6 +208,7 @@ class VoiceNode:
             self.current_process = None
 
     def process_queue(self):
+        """工作线程：从队列获取文本并合成语音。"""
         while not rospy.is_shutdown():
             try:
                 task = self.msg_queue.get(timeout=0.5)
@@ -219,19 +234,17 @@ class VoiceNode:
 
                 rospy.loginfo(f"[VoiceNode] Processing: '{text}' (Speed: {speed})")
 
-                # Split by comma for natural pause
+                # 按逗号分割，实现自然停顿
                 segments = re.split(r'[，,]', text)
                 segments = [s.strip() for s in segments if s.strip()]
                 
                 all_segments_audio = []
                 
-                # Generate audio for all segments
+                # 逐段生成音频
                 for i, seg in enumerate(segments):
                     if self.stop_flag: break
                     
-                    # Skip pure English segments inside a mixed sentence?
-                    # The user said "if output English automatically skip".
-                    # If a segment is purely English, maybe skip it?
+                    # 跳过纯英文片段 (根据需求)
                     if not bool(re.search(r'[\u4e00-\u9fa5]', seg)):
                         rospy.logwarn(f"[VoiceNode] Skipping English segment: '{seg}'")
                         continue
@@ -244,7 +257,7 @@ class VoiceNode:
                         
                         if len(audio.samples) > 0:
                             all_segments_audio.append(audio.samples)
-                            # Add pause
+                            # 添加停顿
                             if i < len(segments) - 1:
                                 pause_duration = 0.2
                                 pause_samples = int(pause_duration * audio.sample_rate)
@@ -259,10 +272,10 @@ class VoiceNode:
                     continue
 
                 if all_segments_audio:
-                    # Concatenate
+                    # 拼接所有片段
                     full_audio = np.concatenate(all_segments_audio)
                     
-                    # Add start silence
+                    # 添加开始静音
                     silence_duration = 0.5
                     silence_samples = int(silence_duration * audio.sample_rate)
                     silence = np.zeros(silence_samples, dtype=np.float32)
@@ -271,6 +284,7 @@ class VoiceNode:
                     rospy.loginfo(f"[VoiceNode] Playing ({len(final_samples)} samples)...")
                     sf.write(OUTPUT_WAV, final_samples, audio.sample_rate)
                     
+                    # 调用 aplay 播放
                     self.current_process = subprocess.Popen(
                         ["aplay", "-q", OUTPUT_WAV],
                         stdout=subprocess.DEVNULL, 
@@ -294,6 +308,7 @@ class VoiceNode:
                 self.is_speaking = False
 
     def status_loop(self):
+        """定期汇报状态。"""
         rate = rospy.Rate(1)
         while not rospy.is_shutdown():
             status = {

@@ -21,19 +21,21 @@ class GarbageController:
         self.VOICE_BUFFER_TIME = 3.0 
 
     def start(self, done_callback, status_callback, seq_id=0):
+        """启动任务"""
         self.active = True
         self.done_callback = done_callback
         
-        # Subscribe to result
+        # 订阅结果话题
         if self.driver_sub:
             self.driver_sub.unregister()
         self.driver_sub = rospy.Subscriber("/vision/driver/yolo/result", String, self.result_cb)
         
-        # Send Start Command
+        # 发送启动指令
         rospy.loginfo("[GarbageController] Sending start command...")
         self.driver_pub.publish("start garbage")
 
     def stop(self):
+        """停止任务"""
         self.active = False
         if self.driver_sub:
             self.driver_sub.unregister()
