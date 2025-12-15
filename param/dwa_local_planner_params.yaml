@@ -1,0 +1,213 @@
+#  ######################################################################################
+# #以上为原参数
+# #以下为调试优化参数
+
+# DWAPlannerROS:
+#   # 启用恢复行为
+#   recovery_behavior_enabled: true
+#   # 启用旋转恢复
+#   clearing_rotation_allowed: false
+
+#   # 恢复行为配置
+#   recovery_behaviors:
+#     - name: 'rotate_recovery'
+#       type: 'rotate_recovery/RotateRecovery' 
+#     - name: 'reset_recovery'
+#       type: 'clear_costmap_recovery/ClearCostmapRecovery'
+
+#   # 旋转恢复行为配置
+#   rotate_recovery:
+#     layer_names: ["obstacle"]
+#     max_rotational_vel: 0.36
+#     min_rotational_vel: 0.3
+#     angle_to_rotate: 1.57
+#     acc_lim_th: 2.0
+
+#   # 清除恢复行为配置
+#   reset_recovery:
+#     reset_distance: 0
+#     layer_names: ["obstacle"]
+# # Robot Configuration Parameters - stdr robot ------------------------------------------
+# # acc_lim_x:x方向的加速度绝对值
+# # acc_lim_y:y方向的加速度绝对值,该值只有全向移动的机器人才需配置
+# # acc_lim_th:旋转加速度的绝对值
+#   acc_lim_x: 1.2 #0.5  # maximum is theoretically 2.0
+#   acc_lim_y: 0.0  # diff drive robot
+#   acc_lim_th: 2.5
+
+# # max_trans_vel:平移速度最大值绝对值
+# # min_trans_vel:平移速度最小值的绝对值
+#   max_vel_trans: 0.4 #choose slightly less than the base's capability
+#   min_vel_trans: 0.05 #this is the min trans velocity when there is negligible rotational velocity # 0.1 -> 0.05
+#   trans_stopped_vel: 0.01 #0.1 -> 0.01
+
+# # max_vel_x:x方向最大速度的绝对值
+# # min_vel_x:x方向最小值绝对值,如果为负值表示可以后退
+# # max_vel_y:y方向最大速度的绝对值
+# # min_vel_y:y方向最小速度的绝对值
+#   max_vel_x: 0.40 #0.54
+#   min_vel_x: -0.10
+#   max_vel_y: 0 #0.13  #diff drive robot,don't need set vel_y
+#   min_vel_y: 0 #-0.13
+
+# # max_rot_vel:最大旋转速度的绝对值
+# # min_rot_vel:最小旋转速度的绝对值
+#   max_vel_theta: 1.0 #0.6  #choose slightly less than the base's capability
+#   min_vel_theta: 0.1 #this is the min angular velocity when there is negligible translational velocity #0.25 -> 0.1
+#   rot_stopped_vel: 0.4
+
+# # Goal Tolerance Parameters ---------------------------------------------------------------
+# # yaw_goal_tolerance:到达目标点时偏行角允许的误差，单位弧度
+# # xy_goal_tolerance:到达目标点时,在xy平面内与目标点的距离误差
+# # latch_xy_goal_tolerance:设置为true,如果到达容错距离内,机器人就会原地旋转,即使转动是会跑出容错距离外
+#   yaw_goal_tolerance: 0.08  # 0.1 rad = 5.7 degree
+#   xy_goal_tolerance: 0.08
+#   latch_xy_goal_tolerance: false
+
+# # Forward Simulation Parameters ------------------------------------------------------------
+# # sim_time:向前仿真轨迹的时间
+# # sim_granularity:步长,轨迹上采样点之间的距离,轨迹上点的密集程度
+# # vx_samples:x方向速度空间的采样点数
+# # vy_samples:y方向速度空间采样点数
+# # vth_samples:旋转方向的速度空间采样点数
+# # controller_frequency:发送给底盘控制移动指令的频率
+#   sim_time: 1.5   # 1.7
+#   sim_granularity: 0.025
+#   vx_samples: 20    # default 3
+#   vy_samples:  1  # diff drive robot, there is only one sample
+#   vth_samples: 25  # 20
+
+# # Trajectory Scoring Parameters ------------------------------------------------------------
+# # path_distance_bias:定义控制器与给定路径接近程度的权重
+# # goal_distance_bias:定义控制器与局部目标点的接近程度的权重
+# # occdist_scale:定义控制器躲避障碍物的程度
+# # stop_time_buffer:为防止碰撞,机器人必须提前停止的时间长度
+# # scaling_speed:启动机器人底盘的速度
+# # max_scaling_factor:最大缩放参数
+# # publish_cost_grid:是否发布规划器在规划路径时的代价网格.如果设置为true,那么
+# #                   就会在~/cost_Wcloud话题上发布sensor_msgs/PointCloud2类型消息
+# #   path_distance_bias: 85.0      # 32.0
+# #   goal_distance_bias: 26.0      # 24.0
+#   path_distance_bias: 45.0      # 32.0
+#   goal_distance_bias: 24.0      # 24.0
+#   occdist_scale: 0.3            # 0.01
+#   forward_point_distance: 0.325 # 0.325
+#   stop_time_buffer: 0.2         # 0.2
+#   scaling_speed: 0.2           # 0.25
+#   max_scaling_factor: 0.2       # 0.2
+#   publish_cost_grid: false
+
+# # Oscillation Prevention Parameters ---------------------------------------------------------
+# # oscillation_reset_dist:机器人运动多远距离才会重置振荡标记
+#   oscillation_reset_dist: 0.05  # default 0.05
+
+# # Global Plan Parameters --------------------------------------------------------------------
+# # prune_plan:机器人前进是是否清除身后1m外的轨迹
+#   prune_plan: true
+# # Differential-drive robot configuration - necessary?
+#   holonomic_robot: true
+
+
+DWAPlannerROS:
+  # 启用恢复行为
+  recovery_behavior_enabled: true
+  # 启用旋转恢复
+  clearing_rotation_allowed: false
+
+  # 恢复行为配置
+  recovery_behaviors:
+    - name: 'rotate_recovery'
+      type: 'rotate_recovery/RotateRecovery' 
+    - name: 'reset_recovery'
+      type: 'clear_costmap_recovery/ClearCostmapRecovery'
+
+  # 旋转恢复行为配置
+  rotate_recovery:
+    layer_names: ["obstacle"]
+    max_rotational_vel: 0.36
+    min_rotational_vel: 0.3
+    angle_to_rotate: 1.57
+    acc_lim_th: 2.0
+
+  # 清除恢复行为配置
+  reset_recovery:
+    reset_distance: 0
+    layer_names: ["obstacle"]
+# Robot Configuration Parameters - stdr robot ------------------------------------------
+# acc_lim_x:x方向的加速度绝对值
+# acc_lim_y:y方向的加速度绝对值,该值只有全向移动的机器人才需配置
+# acc_lim_th:旋转加速度的绝对值
+  acc_lim_x: 1.0 #0.5  # maximum is theoretically 2.0
+  acc_lim_y: 0.5  # diff drive robot
+  acc_lim_th: 2
+
+# max_trans_vel:平移速度最大值绝对值
+# min_trans_vel:平移速度最小值的绝对值
+  max_vel_trans: 0.4 #choose slightly less than the base's capability
+  min_vel_trans: 0.1 #this is the min trans velocity when there is negligible rotational velocity
+#  trans_stopped_vel: 0.1
+
+# max_vel_x:x方向最大速度的绝对值
+# min_vel_x:x方向最小值绝对值,如果为负值表示可以后退
+# max_vel_y:y方向最大速度的绝对值
+# min_vel_y:y方向最小速度的绝对值
+  max_vel_x: 0.81 #0.54
+  min_vel_x: -0.27
+  max_vel_y: 0.195 #0.13  #diff drive robot,don't need set vel_y
+  min_vel_y: -0.195 #-0.13
+
+# max_rot_vel:最大旋转速度的绝对值
+# min_rot_vel:最小旋转速度的绝对值
+  max_vel_theta: 0.9 #0.6  #choose slightly less than the base's capability
+  min_vel_theta: 0.1 #this is the min angular velocity when there is negligible translational velocity
+#  rot_stopped_vel: 0.4
+
+# Goal Tolerance Parameters ---------------------------------------------------------------
+# yaw_goal_tolerance:到达目标点时偏行角允许的误差，单位弧度
+# xy_goal_tolerance:到达目标点时,在xy平面内与目标点的距离误差
+# latch_xy_goal_tolerance:设置为true,如果到达容错距离内,机器人就会原地旋转,即使转动是会跑出容错距离外
+  yaw_goal_tolerance: 0.15  # 0.1 rad = 5.7 degree
+  xy_goal_tolerance: 0.08
+  latch_xy_goal_tolerance: false
+
+# Forward Simulation Parameters ------------------------------------------------------------
+# sim_time:向前仿真轨迹的时间
+# sim_granularity:步长,轨迹上采样点之间的距离,轨迹上点的密集程度
+# vx_samples:x方向速度空间的采样点数
+# vy_samples:y方向速度空间采样点数
+# vth_samples:旋转方向的速度空间采样点数
+# controller_frequency:发送给底盘控制移动指令的频率
+  sim_time: 1.0   # 1.7
+  sim_granularity: 0.025
+  vx_samples: 20    # default 3
+  vy_samples:  15  # diff drive robot, there is only one sample
+  vth_samples: 10  # 20
+
+# Trajectory Scoring Parameters ------------------------------------------------------------
+# path_distance_bias:定义控制器与给定路径接近程度的权重
+# goal_distance_bias:定义控制器与局部目标点的接近程度的权重
+# occdist_scale:定义控制器躲避障碍物的程度
+# stop_time_buffer:为防止碰撞,机器人必须提前停止的时间长度
+# scaling_speed:启动机器人底盘的速度
+# max_scaling_factor:最大缩放参数
+# publish_cost_grid:是否发布规划器在规划路径时的代价网格.如果设置为true,那么
+#                   就会在~/cost_cloud话题上发布sensor_msgs/PointCloud2类型消息
+  path_distance_bias: 60.0      # 32.0
+  goal_distance_bias: 24.0      # 24.0
+  occdist_scale: 0.5            # 0.01
+  forward_point_distance: 0.325 # 0.325
+  stop_time_buffer: 0.2         # 0.2
+  scaling_speed: 0.2           # 0.25
+  max_scaling_factor: 0.2       # 0.2
+  publish_cost_grid: false
+
+# Oscillation Prevention Parameters ---------------------------------------------------------
+# oscillation_reset_dist:机器人运动多远距离才会重置振荡标记
+  oscillation_reset_dist: 0.05  # default 0.05
+
+# Global Plan Parameters --------------------------------------------------------------------
+# prune_plan:机器人前进是是否清除身后1m外的轨迹
+  prune_plan: true
+# Differential-drive robot configuration - necessary?
+  holonomic_robot: true
+

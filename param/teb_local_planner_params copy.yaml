@@ -1,0 +1,494 @@
+# # TebLocalPlannerROS 参数配置文件
+# # 包含了所有可调整参数，并根据用户之前的设置进行了保留。
+# # 参考: http://wiki.ros.org/teb_local_planner
+
+# TebLocalPlannerROS:
+#   odom_topic: odom
+#   map_frame: map
+
+#   # --------------------------------------------------------------------------------
+#   # 1. 机器人运动学参数 (Robot Kinematics)
+#   # --------------------------------------------------------------------------------
+#   # max_vel_x: 最大向前线速度 (m/s) - 参考 DWA: 0.4
+#   # max_vel_x_backwards: 最大倒车速度 (m/s) - 参考 DWA min_vel_x: -0.1
+#   # max_vel_theta: 最大角速度 (rad/s) - 参考 DWA: 1.0
+#   # acc_lim_x: 最大线加速度 (m/s^2) - 参考 DWA: 1.2
+#   # acc_lim_theta: 最大角加速度 (rad/s^2) - 参考 DWA: 2.5
+#   max_vel_x: 0.3                          # 0.4   [0.01, 100]
+#   max_vel_x_backwards: 0.1                # 0.2   [0.01, 100]
+#   max_vel_theta: 1.0                      # 0.3   [0.01, 100]
+#   acc_lim_x: 0.8                          # 0.5   [0.01, 100]
+#   acc_lim_theta: 2.5                      # 0.5   [0.01, 100]
+
+#   # --------------------------------------------------------------------------------
+#   # 2. 特殊底盘参数 (Omni / Carlike)
+#   # --------------------------------------------------------------------------------
+#   # max_vel_y: 最大横向速度 (m/s) - 麦轮需设为 > 0
+#   # acc_lim_y: 最大横向加速度 (m/s^2) - 麦轮需设为 > 0
+#   # min_turning_radius: 最小转弯半径 (m) - 麦轮/原地转弯设为 0
+#   # wheelbase: 轴距 (m)
+#   # cmd_angle_instead_rotvel: False
+#   max_vel_y: 0.2                          # 0.0   [0.0, 100]
+#   acc_lim_y: 0.4                          # 0.5   [0.01, 100]
+#   min_turning_radius: 0.0                 # 0.0   [0.0, 50.0]
+#   wheelbase: 0.0                          # 1.0   [-10.0, 10.0]
+#   cmd_angle_instead_rotvel: False         # False
+
+#   # --------------------------------------------------------------------------------
+#   # 3. 机器人形状与足迹 (Footprint)
+#   # --------------------------------------------------------------------------------
+#   # is_footprint_dynamic: False
+#   # footprint_model: 矩形/多边形 (根据 costmap_common_params.yaml 设置)
+#   is_footprint_dynamic: False             # False
+#   footprint_model:
+#     type: "polygon"
+#     vertices: [[-0.15, -0.14], [-0.15, 0.14], [0.18, 0.14], [0.19, -0.14]]
+
+#   # --------------------------------------------------------------------------------
+#   # 4. 目标容忍度 (Goal Tolerance)
+#   # --------------------------------------------------------------------------------
+#   # xy_goal_tolerance: 位置误差 (m) - 参考 DWA: 0.08
+#   # yaw_goal_tolerance: 角度误差 (rad) - 参考 DWA: 0.08
+#   # free_goal_vel: False
+#   xy_goal_tolerance: 0.1                  # 0.2   [0.001, 10]
+#   yaw_goal_tolerance: 0.08                # 0.1   [0.001, 3.2]
+#   free_goal_vel: False                    # False
+
+#   # --------------------------------------------------------------------------------
+#   # 5. 轨迹配置 - 时间与长度 (Trajectory - Temporal)
+#   # --------------------------------------------------------------------------------
+#   # teb_autosize: True
+#   # dt_ref: 时间分辨率 (s) - N100优化: 增大至 0.3 减少计算量
+#   # dt_hysteresis: 0.1
+#   # global_plan_overwrite_orientation: True
+#   # max_global_plan_lookahead_dist: 优化距离 (m) - N100优化: 减小至 2.5
+#   # publish_feedback: False
+#   # visualize_with_time_as_z_axis_scale: 0.0
+#   teb_autosize: True                      # True
+#   dt_ref: 0.3                             # 0.3   [0.01, 1.0]
+#   dt_hysteresis: 0.1                      # 0.1   [0.002, 0.5]
+#   global_plan_overwrite_orientation: True # True
+#   max_global_plan_lookahead_dist: 2.5     # 3.0   [0.0, 50.0]
+#   publish_feedback: False                 # False # new
+#   visualize_with_time_as_z_axis_scale: 0.0 # 0.0   [0.0, 1.0] # new
+
+#   # --------------------------------------------------------------------------------
+#   # 6. 轨迹配置 - 可行性与重置 (Trajectory - Feasibility)
+#   # --------------------------------------------------------------------------------
+#   # force_reinit_new_goal_dist: 1.0
+#   # force_reinit_new_goal_angular: 0.78
+#   # feasibility_check_no_poses: 4 - N100优化: 略微减少
+#   # allow_init_with_backwards_motion: False
+#   # exact_arc_length: False
+#   force_reinit_new_goal_dist: 1.0         # 1.0   [0.0, 10.0]
+#   force_reinit_new_goal_angular: 0.78     # 0.78  [0.0, 4.0]
+#   feasibility_check_no_poses: 4           # 5     [0, 50]
+#   allow_init_with_backwards_motion: False # False
+#   exact_arc_length: False                 # False
+
+#   # --------------------------------------------------------------------------------
+#   # 7. 障碍物参数 - 基础 (Obstacles - Basic)
+#   # --------------------------------------------------------------------------------
+#   # min_obstacle_dist: 最小障碍物距离 (m)
+#   # inflation_dist: 膨胀距离 (m)
+#   # dynamic_obstacle_inflation_dist: 0.6
+#   # include_dynamic_obstacles: False
+#   # include_costmap_obstacles: True
+#   min_obstacle_dist: 0.15                 # 0.5   [0.0, 10.0]
+#   inflation_dist: 0.30                    # 0.6   [0.0, 15.0]
+#   dynamic_obstacle_inflation_dist: 0.6    # 0.6   [0.0, 15.0]
+#   include_dynamic_obstacles: False        # False
+#   include_costmap_obstacles: True         # True
+
+#   # --------------------------------------------------------------------------------
+#   # 8. 障碍物参数 - 高级 (Obstacles - Advanced)
+#   # --------------------------------------------------------------------------------
+#   # costmap_obstacles_behind_robot_dist: 1.0
+#   # obstacle_poses_affected: 25 - N100优化: 略微减少
+#   # legacy_obstacle_association: False
+#   # obstacle_association_force_inclusion_factor: 1.5
+#   # obstacle_association_cutoff_factor: 5.0
+#   costmap_obstacles_behind_robot_dist: 1.0 # 1.5   [0.0, 20.0]
+#   obstacle_poses_affected: 25             # 30    [0, 200]
+#   legacy_obstacle_association: False      # False
+#   obstacle_association_force_inclusion_factor: 1.5 # 1.5 [0.0, 100.0]
+#   obstacle_association_cutoff_factor: 5.0 # 5.0   [1.0, 100.0]
+
+#   # --------------------------------------------------------------------------------
+#   # 9. 优化参数 - 求解器 (Optimization - Solver)
+#   # --------------------------------------------------------------------------------
+#   # no_inner_iterations: 4 - N100优化: 减少迭代次数
+#   # no_outer_iterations: 3 - N100优化: 减少迭代次数
+#   # optimization_activate: True
+#   # optimization_verbose: False
+#   # penalty_epsilon: 0.05
+#   no_inner_iterations: 2                  # 5     [1, 100]
+#   no_outer_iterations: 2                  # 4     [1, 100]
+#   optimization_activate: True             # True
+#   optimization_verbose: False             # False
+#   penalty_epsilon: 0.05                   # 0.05  [0.0, 1.0]
+
+#   # --------------------------------------------------------------------------------
+#   # 10. 优化权重 - 运动学 (Optimization Weights - Kinematics)
+#   # --------------------------------------------------------------------------------
+#   # weight_max_vel_x: 2
+#   # weight_max_vel_theta: 1
+#   # weight_acc_lim_x: 1
+#   # weight_acc_lim_theta: 1
+#   # weight_kinematics_nh: 1.0 - 麦轮优化: 允许横向移动 (非完整约束权重降低)
+#   # weight_kinematics_forward_drive: 1.0 - 麦轮优化: 允许灵活移动
+#   # weight_max_vel_y: 2
+#   # weight_acc_lim_y: 1
+#   # weight_kinematics_turning_radius: 1
+#   weight_max_vel_x: 2                     # 2     [0, 1000]
+#   weight_max_vel_theta: 1                 # 1     [0, 1000]
+#   weight_acc_lim_x: 1                     # 1     [0, 1000]
+#   weight_acc_lim_theta: 1                 # 1     [0, 1000]
+#   weight_kinematics_nh: 1.0               # 1000  [0, 10000]
+#   weight_kinematics_forward_drive: 1.0    # 1.0   [0, 1000]
+#   weight_max_vel_y: 2                     # 2     [0, 1000] # new
+#   weight_acc_lim_y: 1                     # 1     [0, 1000] # new
+#   weight_kinematics_turning_radius: 1     # 1     [0, 1000] # new
+
+#   # --------------------------------------------------------------------------------
+#   # 11. 优化权重 - 障碍物与目标 (Optimization Weights - Obstacle/Goal)
+#   # --------------------------------------------------------------------------------
+#   # weight_obstacle: 50
+#   # weight_inflation: 0.1
+#   # weight_viapoint: 1
+#   # weight_goal: 50
+#   # weight_optimaltime: 1.0 - 适当增加时间权重
+#   # weight_shortest_path: 0
+#   # weight_dynamic_obstacle: 50
+#   # weight_dynamic_obstacle_inflation: 0.1
+#   # weight_adapt_factor: 2.0
+#   # obstacle_cost_exponent: 1.0
+#   weight_obstacle: 50                     # 50    [0, 1000]
+#   weight_inflation: 0.1                   # 0.1   [0.0, 10.0]
+#   weight_viapoint: 1                      # 1     [0, 1000]
+#   weight_goal: 50                         # 50    [0, 1000]
+#   weight_optimaltime: 1.0                 # 1.0   [0, 1000]
+#   weight_shortest_path: 0                 # 0     [0, 100] # new
+#   weight_dynamic_obstacle: 50             # 50    [0, 1000] # new
+#   weight_dynamic_obstacle_inflation: 0.1  # 0.1   [0.0, 10.0] # new
+#   weight_adapt_factor: 2.0                # 2.0   [1.0, 100.0] # new
+#   obstacle_cost_exponent: 1.0             # 1.0   [0.01, 100.0] # new
+
+#   # --------------------------------------------------------------------------------
+#   # 12. 同伦类规划 - 基础 (Homotopy Class Planner - Basic)
+#   # --------------------------------------------------------------------------------
+#   # enable_homotopy_class_planning: False - N100优化: 关闭并行规划以节省算力
+#   # enable_multithreading: True
+#   # max_number_classes: 2
+#   # selection_cost_hysteresis: 1.0
+#   # selection_prefer_initial_plan: 0.95
+#   # selection_obst_cost_scale: 2.0
+#   # selection_viapoint_cost_scale: 1.0
+#   # selection_alternative_time_cost: False
+#   # switching_blocking_period: 0.0
+#   enable_homotopy_class_planning: False   # False
+#   enable_multithreading: True             # True
+#   max_number_classes: 2                   # 5     [1, 100]
+#   selection_cost_hysteresis: 1.0          # 1.0   [0.0, 2.0]
+#   selection_prefer_initial_plan: 0.95     # 0.95  [0.0, 1.0]
+#   selection_obst_cost_scale: 2.0          # 2.0   [0.0, 1000.0] # new
+#   selection_viapoint_cost_scale: 1.0      # 1.0   [0.0, 100.0] # new
+#   selection_alternative_time_cost: False  # False # new
+#   switching_blocking_period: 0.0          # 0.0   [0.0, 60.0] # new
+
+#   # --------------------------------------------------------------------------------
+#   # 13. 同伦类规划 - 探索 (Homotopy Class Planner - Exploration)
+#   # --------------------------------------------------------------------------------
+#   # roadmap_graph_no_samples: 15
+#   # roadmap_graph_area_width: 5
+#   # h_signature_prescaler: 1
+#   # h_signature_threshold: 0.1
+#   # obstacle_heading_threshold: 0.45
+#   # visualize_hc_graph: False
+#   # roadmap_graph_area_length_scale: 1.0
+#   # viapoints_all_candidates: True
+#   roadmap_graph_no_samples: 15            # 15    [1, 100]
+#   roadmap_graph_area_width: 5             # 5     [0.1, 20.0]
+#   h_signature_prescaler: 1                # 1     [0.2, 1.0]
+#   h_signature_threshold: 0.1              # 0.1   [0.0, 1.0]
+#   obstacle_heading_threshold: 0.45        # 0.45  [0.0, 1.0]
+#   visualize_hc_graph: False               # False
+#   roadmap_graph_area_length_scale: 1.0    # 1.0   [0.5, 2.0] # new
+#   viapoints_all_candidates: True          # True # new
+
+#   # --------------------------------------------------------------------------------
+#   # 14. 恢复与途经点 (Recovery & ViaPoints)
+#   # --------------------------------------------------------------------------------
+#   # oscillation_recovery: True
+#   # global_plan_viapoint_sep: -0.1
+#   # via_points_ordered: False
+#   # control_look_ahead_poses: 1
+#   # shrink_horizon_backup: True
+#   oscillation_recovery: True              # True
+#   global_plan_viapoint_sep: -0.1          # -0.1  [-0.1, 5.0]
+#   via_points_ordered: False               # False
+#   control_look_ahead_poses: 1             # 1
+#   shrink_horizon_backup: True             # True # new
+
+
+# TebLocalPlannerROS 参数配置文件
+# 包含了所有可调整参数，并根据用户之前的设置进行了保留。
+# 参考: http://wiki.ros.org/teb_local_planner
+
+TebLocalPlannerROS:
+  odom_topic: odom
+  map_frame: map
+
+  # --------------------------------------------------------------------------------
+  # 1. 机器人运动学参数 (Robot Kinematics)
+  # --------------------------------------------------------------------------------
+  # max_vel_x: 最大向前线速度 (m/s) - 参考 DWA: 0.4
+  # max_vel_x_backwards: 最大倒车速度 (m/s) - 参考 DWA min_vel_x: -0.1
+  # max_vel_theta: 最大角速度 (rad/s) - 参考 DWA: 1.0
+  # acc_lim_x: 最大线加速度 (m/s^2) - 参考 DWA: 1.2
+  # acc_lim_theta: 最大角加速度 (rad/s^2) - 参考 DWA: 2.5
+  max_vel_x: 0.4                          # 0.4   [0.01, 100]
+  max_vel_x_backwards: 0.2                # 0.2   [0.01, 100]
+  max_vel_theta: 1.0                      # 0.3   [0.01, 100]
+  acc_lim_x: 0.5                          # 0.5   [0.01, 100]
+  acc_lim_theta: 1.5                      # 0.5   [0.01, 100]
+
+  # --------------------------------------------------------------------------------
+  # 2. 特殊底盘参数 (Omni / Carlike)
+  # --------------------------------------------------------------------------------
+  # max_vel_y: 最大横向速度 (m/s) - 麦轮需设为 > 0
+  # max_vel_trans: 机器人的最大线速度 (m/s)。如果 > 0，则限制 max_vel_x 和 max_vel_y 的线性组合。
+  # acc_lim_y: 最大横向加速度 (m/s^2) - 麦轮需设为 > 0
+  # min_turning_radius: 最小转弯半径 (m) - 麦轮/原地转弯设为 0
+  # wheelbase: 轴距 (m) - 仅在 cmd_angle_instead_rotvel 为真时有效
+  # cmd_angle_instead_rotvel: 是否将旋转速度转换为转向角 (适用于阿克曼底盘)
+  max_vel_y: 0.3                          # 0.0   [0.0, 100]
+  max_vel_trans: 0.0                      # 0.0   [0.0, 100] # new
+  acc_lim_y: 0.4                          # 0.5   [0.01, 100]
+  min_turning_radius: 0.0                 # 0.0   [0.0, 50.0]
+  wheelbase: 0.0                          # 1.0   [-10.0, 10.0]
+  cmd_angle_instead_rotvel: False         # False
+
+  # --------------------------------------------------------------------------------
+  # 3. 机器人形状与足迹 (Footprint)
+  # --------------------------------------------------------------------------------
+  # is_footprint_dynamic: 是否在检查轨迹可行性前更新足迹
+  # use_proportional_saturation: 如果为真，则按比例减少所有扭曲分量
+  # transform_tolerance: 查询 TF 树时的容忍度 (s)
+  # footprint_model: 矩形/多边形 (根据 costmap_common_params.yaml 设置)
+  is_footprint_dynamic: False             # False
+  use_proportional_saturation: False      # False # new
+  transform_tolerance: 0.5                # 0.5   [0.001, 20] # new
+  footprint_model:
+    type: "polygon"
+    vertices: [[-0.15, -0.14], [-0.15, 0.14], [0.18, 0.14], [0.19, -0.14]]
+
+  # --------------------------------------------------------------------------------
+  # 4. 目标容忍度 (Goal Tolerance)
+  # --------------------------------------------------------------------------------
+  # xy_goal_tolerance: 位置误差 (m) - 参考 DWA: 0.08
+  # yaw_goal_tolerance: 角度误差 (rad) - 参考 DWA: 0.08
+  # free_goal_vel: 是否允许机器人以最大速度到达目标 (False: 到达目标时速度为0)
+  # trans_stopped_vel: 低于此速度则认为机器人处于平移停止状态
+  # theta_stopped_vel: 低于此速度则认为机器人处于旋转停止状态
+  xy_goal_tolerance: 0.1                  # 0.2   [0.001, 10]
+  yaw_goal_tolerance: 0.1               # 0.1   [0.001, 3.2]
+  free_goal_vel: False                    # False
+  trans_stopped_vel: 0.1                  # 0.1 # new
+  theta_stopped_vel: 0.1                  # 0.1 # new
+
+  # --------------------------------------------------------------------------------
+  # 5. 轨迹配置 - 时间与长度 (Trajectory - Temporal)
+  # --------------------------------------------------------------------------------
+  # teb_autosize: 是否在优化期间自动调整轨迹大小 (推荐 True)
+  # dt_ref: 轨迹的时间分辨率 (s) - N100优化: 增大至 0.3 减少计算量
+  # dt_hysteresis: 自动调整大小的滞后时间 (通常为 dt_ref 的 10%)
+  # global_plan_overwrite_orientation: 是否覆盖全局规划中的方向 (推荐 True)
+  # max_global_plan_lookahead_dist: 考虑优化的全局计划子集的最大长度 (m) - N100优化: 减小至 2.5
+  # publish_feedback: 是否发布包含完整轨迹和障碍物列表的反馈 (仅用于调试)
+  # visualize_with_time_as_z_axis_scale: 如果 > 0，则使用时间作为 z 轴缩放来可视化轨迹和障碍物
+  teb_autosize: True                      # True
+  dt_ref: 0.3                             # 0.3   [0.01, 1.0]
+  dt_hysteresis: 0.05                      # 0.1   [0.002, 0.5]
+  global_plan_overwrite_orientation: True # True
+  max_global_plan_lookahead_dist: 2.5     # 3.0   [0.0, 50.0]
+  publish_feedback: False                 # False # new
+  visualize_with_time_as_z_axis_scale: 0.0 # 0.0   [0.0, 1.0] # new
+
+  # --------------------------------------------------------------------------------
+  # 6. 轨迹配置 - 可行性与重置 (Trajectory - Feasibility)
+  # --------------------------------------------------------------------------------
+  # force_reinit_new_goal_dist: 如果新目标距离超过此值，则强制重新初始化轨迹 (m)
+  # force_reinit_new_goal_angular: 如果新目标角度差异超过此值，则强制重新初始化轨迹 (rad)
+  # feasibility_check_no_poses: 每个采样间隔检查预测计划的可行性的姿态数量 - N100优化: 略微减少
+  # feasibility_check_lookahead_distance: 指定检查可行性的最大距离 (m)
+  # prevent_look_ahead_poses_near_goal: 防止在目标附近查看这么多姿态
+  # allow_init_with_backwards_motion: 是否允许以向后运动初始化轨迹 (仅在有后部传感器时推荐)
+  # exact_arc_length: 如果为真，则在速度、加速度和转弯率计算中使用精确的弧长 (增加 CPU 时间)
+  force_reinit_new_goal_dist: 1.0         # 1.0   [0.0, 10.0]
+  force_reinit_new_goal_angular: 0.78     # 0.78  [0.0, 4.0]
+  feasibility_check_no_poses: 4           # 5     [0, 50]
+  feasibility_check_lookahead_distance: -1 # -1    [-1, 20] # new
+  prevent_look_ahead_poses_near_goal: 0   # 0     [0, 20] # new
+  allow_init_with_backwards_motion: True # False
+  exact_arc_length: False                 # False
+
+  # --------------------------------------------------------------------------------
+  # 7. 障碍物参数 - 基础 (Obstacles - Basic)
+  # --------------------------------------------------------------------------------
+  # min_obstacle_dist: 最小障碍物距离 (m)
+  # inflation_dist: 障碍物膨胀距离 (m)
+  # dynamic_obstacle_inflation_dist: 动态障碍物的膨胀距离 (m)
+  # include_dynamic_obstacles: 是否考虑动态障碍物 (使用恒定速度模型预测)
+  # include_costmap_obstacles: 是否直接考虑代价地图中的障碍物
+  min_obstacle_dist: 0.05                 # 0.5   [0.0, 10.0]
+  inflation_dist: 0.10                    # 0.6   [0.0, 15.0]
+  dynamic_obstacle_inflation_dist: 0.6    # 0.6   [0.0, 15.0]
+  include_dynamic_obstacles: False        # False
+  include_costmap_obstacles: True         # True
+
+  # --------------------------------------------------------------------------------
+  # 8. 障碍物参数 - 高级 (Obstacles - Advanced)
+  # --------------------------------------------------------------------------------
+  # costmap_obstacles_behind_robot_dist: 考虑机器人后方代价地图障碍物的距离限制 (m)
+  # obstacle_poses_affected: 为了减少计算量，障碍物位置仅关联到轨迹上最近的姿态，但也考虑一定数量的邻居 - N100优化: 略微减少
+  # legacy_obstacle_association: 是否使用旧的障碍物关联策略
+  # obstacle_association_force_inclusion_factor: 强制包含障碍物的因子 (min_obstacle_dist 的倍数)
+  # obstacle_association_cutoff_factor: 忽略障碍物的截止因子 (min_obstacle_dist 的倍数)
+  # obstacle_proximity_ratio_max_vel: 靠近静态障碍物时用于降低速度的最大速度比率
+  # obstacle_proximity_lower_bound: 速度应降低的静态障碍物距离 (m)
+  # obstacle_proximity_upper_bound: 速度应较高的静态障碍物距离 (m)
+  costmap_obstacles_behind_robot_dist: 1.0 # 1.5   [0.0, 20.0]
+  obstacle_poses_affected: 15             # 30    [0, 200]
+  legacy_obstacle_association: False      # False
+  obstacle_association_force_inclusion_factor: 1.5 # 1.5 [0.0, 100.0]
+  obstacle_association_cutoff_factor: 5.0 # 5.0   [1.0, 100.0]
+  obstacle_proximity_ratio_max_vel: 0.5   # 1.0   [0.0, 1.0] # new
+  obstacle_proximity_lower_bound: 0.0     # 0.0   [0.0, 10.0] # new
+  obstacle_proximity_upper_bound: 0.20     # 0.5   [0.0, 10.0] # new
+
+  # --------------------------------------------------------------------------------
+  # 9. 优化参数 - 求解器 (Optimization - Solver)
+  # --------------------------------------------------------------------------------
+  # no_inner_iterations: 每次外循环迭代中调用的求解器迭代次数 - N100优化: 减少迭代次数
+  # no_outer_iterations: 每次外循环迭代自动调整轨迹大小并调用内部优化器 - N100优化: 减少迭代次数
+  # optimization_activate: 是否激活优化
+  # optimization_verbose: 是否打印详细信息
+  # penalty_epsilon: 惩罚函数的安全裕度
+  no_inner_iterations: 3                  # 5     [1, 100]
+  no_outer_iterations: 3                  # 4     [1, 100]
+  optimization_activate: True             # True
+  optimization_verbose: False             # False
+  penalty_epsilon: 0.1                   # 0.05  [0.0, 1.0]
+
+  # --------------------------------------------------------------------------------
+  # 10. 优化权重 - 运动学 (Optimization Weights - Kinematics)
+  # --------------------------------------------------------------------------------
+  # weight_max_vel_x: 满足最大允许平移速度的优化权重
+  # weight_max_vel_theta: 满足最大允许角速度的优化权重
+  # weight_acc_lim_x: 满足最大允许平移加速度的优化权重
+  # weight_acc_lim_theta: 满足最大允许角加速度的优化权重
+  # weight_kinematics_nh: 满足非完整运动学的优化权重 - 麦轮优化: 允许横向移动 (非完整约束权重降低)
+  # weight_kinematics_forward_drive: 强制机器人仅选择前进方向的优化权重 - 麦轮优化: 允许灵活移动
+  # weight_max_vel_y: 满足最大允许横向速度的优化权重 (仅用于全向机器人)
+  # weight_acc_lim_y: 满足最大允许横向加速度的优化权重 (仅用于全向机器人)
+  # weight_kinematics_turning_radius: 强制最小转弯半径的优化权重 (阿克曼机器人)
+  weight_max_vel_x: 2                     # 2     [0, 1000]
+  weight_max_vel_theta: 1                 # 1     [0, 1000]
+  weight_acc_lim_x: 1                     # 1     [0, 1000]
+  weight_acc_lim_theta: 10.0                 # 1     [0, 1000]
+  weight_kinematics_nh: 5.0               # 1000  [0, 10000]
+  weight_kinematics_forward_drive: 1.0    # 1.0   [0, 1000]
+  weight_max_vel_y: 2                     # 2     [0, 1000] # new
+  weight_acc_lim_y: 1                     # 1     [0, 1000] # new
+  weight_kinematics_turning_radius: 1     # 1     [0, 1000] # new
+
+  # --------------------------------------------------------------------------------
+  # 11. 优化权重 - 障碍物与目标 (Optimization Weights - Obstacle/Goal)
+  # --------------------------------------------------------------------------------
+  # weight_obstacle: 满足最小障碍物分离的优化权重
+  # weight_inflation: 膨胀惩罚的优化权重 (应较小)
+  # weight_viapoint: 最小化到途经点距离的优化权重
+  # weight_goal: 满足目标位置和方向的优化权重
+  # weight_optimaltime: 缩短轨迹时间的优化权重 - 适当增加时间权重
+  # weight_shortest_path: 缩短轨迹路径长度的优化权重
+  # weight_dynamic_obstacle: 满足最小动态障碍物分离的优化权重
+  # weight_dynamic_obstacle_inflation: 动态障碍物膨胀惩罚的优化权重
+  # weight_velocity_obstacle_ratio: 满足最大允许速度与静态障碍物距离关系的优化权重
+  # weight_adapt_factor: 权重自适应因子 (迭代增加权重)
+  # obstacle_cost_exponent: 非线性障碍物成本的指数
+  weight_obstacle: 50                     # 50    [0, 1000]
+  weight_inflation: 0.1                   # 0.1   [0.0, 10.0]
+  weight_viapoint: 25                      # 1     [0, 1000]
+  weight_goal: 50                         # 50    [0, 1000]
+  weight_optimaltime: 1.0                 # 1.0   [0, 1000]
+  weight_shortest_path: 1.0                 # 0     [0, 100] # new
+  weight_dynamic_obstacle: 50             # 50    [0, 1000] # new
+  weight_dynamic_obstacle_inflation: 0.1  # 0.1   [0.0, 10.0] # new
+  weight_velocity_obstacle_ratio: 0.0     # 0.0   [0, 1000] # new
+  weight_adapt_factor: 2.0                # 2.0   [1.0, 100.0] # new
+  obstacle_cost_exponent: 1.0             # 1.0   [0.01, 100.0] # new
+
+  # --------------------------------------------------------------------------------
+  # 12. 同伦类规划 - 基础 (Homotopy Class Planner - Basic)
+  # --------------------------------------------------------------------------------
+  # enable_homotopy_class_planning: 是否激活同伦类规划 - N100优化: 关闭并行规划以节省算力
+  # enable_multithreading: 是否激活多线程
+  # max_number_classes: 允许的最大同伦类数量
+  # max_number_plans_in_current_class: 在同一同伦类中尝试的轨迹最大数量
+  # selection_cost_hysteresis: 选择新候选轨迹的成本滞后
+  # selection_prefer_initial_plan: 初始计划的成本降低比例
+  # selection_obst_cost_scale: 选择最佳候选时的障碍物成本缩放
+  # selection_viapoint_cost_scale: 选择最佳候选时的途经点成本缩放
+  # selection_alternative_time_cost: 是否使用总转换时间替换时间成本
+  # selection_dropping_probability: 在每个规划周期中，除当前“最佳”之外的 TEB 将以该概率随机丢弃
+  # switching_blocking_period: 切换到新等价类之前需要过期的持续时间
+  enable_homotopy_class_planning: False   # False
+  enable_multithreading: True             # True
+  max_number_classes: 2                   # 5     [1, 100]
+  max_number_plans_in_current_class: 1    # 1     [1, 10] # new
+  selection_cost_hysteresis: 1.0          # 1.0   [0.0, 2.0]
+  selection_prefer_initial_plan: 0.95     # 0.95  [0.0, 1.0]
+  selection_obst_cost_scale: 2.0          # 2.0   [0.0, 1000.0] # new
+  selection_viapoint_cost_scale: 1.0      # 1.0   [0.0, 100.0] # new
+  selection_alternative_time_cost: False  # False # new
+  selection_dropping_probability: 0.0     # 0.0   [0.0, 1.0] # new
+  switching_blocking_period: 0.0          # 0.0   [0.0, 60.0] # new
+
+  # --------------------------------------------------------------------------------
+  # 13. 同伦类规划 - 探索 (Homotopy Class Planner - Exploration)
+  # --------------------------------------------------------------------------------
+  # roadmap_graph_no_samples: 创建路线图图生成的样本数
+  # roadmap_graph_area_width: 生成样本的区域宽度 (m)
+  # h_signature_prescaler: 缩放障碍物值的数量以允许大量障碍物
+  # h_signature_threshold: 两个 h 签名被视为相等的阈值
+  # obstacle_heading_threshold: 障碍物航向和目标航向之间的归一化标量积阈值
+  # visualize_hc_graph: 可视化用于探索新同伦类的图
+  # roadmap_graph_area_length_scale: 矩形区域的长度比例
+  # viapoints_all_candidates: 是否将所有不同拓扑的轨迹附加到途经点集
+  roadmap_graph_no_samples: 15            # 15    [1, 100]
+  roadmap_graph_area_width: 5             # 5     [0.1, 20.0]
+  h_signature_prescaler: 1                # 1     [0.2, 1.0]
+  h_signature_threshold: 0.1              # 0.1   [0.0, 1.0]
+  obstacle_heading_threshold: 0.45        # 0.45  [0.0, 1.0]
+  visualize_hc_graph: False               # False
+  roadmap_graph_area_length_scale: 1.0    # 1.0   [0.5, 2.0] # new
+  viapoints_all_candidates: True          # True # new
+
+  # --------------------------------------------------------------------------------
+  # 14. 恢复与途经点 (Recovery & ViaPoints)
+  # --------------------------------------------------------------------------------
+  # oscillation_recovery: 尝试检测并解决同一等价类中的振荡
+  # global_plan_viapoint_sep: 从全局计划中提取的每两个连续途经点之间的最小间隔 (m)
+  # via_points_ordered: 规划器是否遵循存储容器中途经点的顺序
+  # control_look_ahead_poses: 控制前瞻姿态索引
+  # shrink_horizon_backup: 在自动检测到问题的情况下允许规划器临时缩小范围
+  # divergence_detection_enable: 是否启用发散检测
+  # divergence_detection_max_chi_squared: 认为优化发散的最大可接受马哈拉诺比斯距离
+  oscillation_recovery: True              # True
+  global_plan_viapoint_sep: 0.25         # -0.1  [-0.1, 5.0]
+  via_points_ordered: True               # False
+  control_look_ahead_poses: 2             # 1
+  shrink_horizon_backup: True             # True # new
+  divergence_detection_enable: False      # False # new
+  divergence_detection_max_chi_squared: 10.0 # 10.0 [0.0, 100.0] # new

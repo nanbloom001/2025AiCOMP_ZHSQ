@@ -1,0 +1,21 @@
+# 参数文件示例
+
+# IMU话题名称和消息类型
+imu_topic: "/your_imu_topic"
+imu_type: "sensor_msgs/Imu"
+
+# IMU数据的超时时间（单位：秒）
+sensor_timeout: 0.1
+
+# 是否进行横滚和俯仰补偿
+filter_roll_pitch: true
+
+# 姿态估计的方差
+orientation_variance: 0.01
+
+# 线性加速度估计的方差
+linear_acceleration_variance: 0.01
+
+# 角速度估计的方差
+angular_velocity_variance: 0.01
+

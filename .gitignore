@@ -1,0 +1,14 @@
+
+
+# 忽略数据集文件夹
+results/
+task_save/
+voice_models/
+
+# 忽略 Python 缓存
+__pycache__/
+*.pyc
+
+# 忽略 IDE 配置
+.vscode/
+.idea/
