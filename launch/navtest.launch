@@ -1,0 +1,44 @@
+<!-- 集成导航相关的 launch 文件 -->
+<launch>
+
+    <!-- 地图服务 -->
+    <include file="$(find nav_demo)/launch/nav03_map_server.launch" />
+
+    <!-- 加载雷达 -->
+    <include file="$(find lslidar_driver)/launch/lslidar_serial.launch" />
+      <!-- 加载机器人模型-->
+  <include file="$(find mowen)/launch/display.launch" />
+  <include  file="$(find wit_ros_imu)/launch/wit_imu.launch" />
+   <node pkg="car_bringup" name="pubv" type="pubv.py"  />
+    <node pkg="car_bringup" type="base_node" name="odometry_publisher">
+        <param name="odom_frame" type="string" value="odom"/>
+        <param name="base_footprint_frame" type="string" value="base_footprint"/>
+        <param name="linear_scale_x" type="double" value="1.0"/>
+        <param name="linear_scale_y" type="double" value="1.0"/>
+        <remap from="/sub_vel" to="/vel_raw"/>
+        <remap from="/pub_odom" to="/odom_raw"/>
+    </node>
+
+    <!-- 扩展卡尔曼数据融合 -->
+    <!-- Extended Kalman data fusion -->
+    <node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization" output="screen">
+        <remap from="odometry/filtered" to="odom"/>
+        <remap from="/imu0" to="/wit/imu"/>
+        <remap from="/odom0" to="odom_raw"/>
+        <param name="odom_frame" value="/odom"/>
+        <param name="world_frame" value="/odom"/>
+        <param name="base_link_frame" value="/base_footprint"/>
+        <rosparam command="load" file="$(find car_bringup)/param/robot_localization.yaml"/>
+    </node>
+
+    <!-- 启动AMCL节点 -->
+    <include file="$(find nav_demo)/launch/nav04_amcl_test.launch" />
+
+    <!-- 运行move_base节点 -->
+    <include file="$(find nav_demo)/launch/nav05_path_dwa.launch" />
+
+    <!-- 运行rviz -->
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find nav_demo)/config/single_nav.rviz" />
+
+</launch>
+ 

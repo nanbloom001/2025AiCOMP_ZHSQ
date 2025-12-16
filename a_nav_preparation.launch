@@ -1,0 +1,11 @@
+<launch>
+    <!-- 启动 car_bringup 的 newt.py -->
+    <node pkg="car_bringup" type="newt.py" name="car_newt" output="screen" />
+
+    <!-- 启动 nav_demo 的 nav777.launch -->
+    <include file="$(find nav_demo)/launch/nav777.launch" />
+
+    <!-- 启动 nav_manager.py 
+    <node pkg="nav_demo" type="nav_manager.py" name="nav_manager" output="screen" launch-prefix="python3" />
+    -->
+</launch>

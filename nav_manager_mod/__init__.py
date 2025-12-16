@@ -1,0 +1,1 @@
+"""Modular navigation manager package."""
