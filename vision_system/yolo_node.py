@@ -257,10 +257,9 @@ class YOLONode:
                             
                     else:
                         # 标准 YOLO 模型
-                        # infer 返回: res_img, raw_res, (boxes, scores, class_ids)
-                        # 我们只需要原始数据
-                        _, _, (boxes, scores, class_ids) = current_model.infer(frame)
-                        inference_time = (time.time() - t_start) * 1000
+                        # infer 返回: res_img, timing_dict, (boxes, scores, class_ids)
+                        _, timing_dict, (boxes, scores, class_ids) = current_model.infer(frame)
+                        inference_time = timing_dict.get('total', 0)
                         
                         # 发布结果
                         if len(boxes) > 0:
@@ -268,9 +267,13 @@ class YOLONode:
                                 "model": self.active_model_name,
                                 "boxes": [b.tolist() for b in boxes] if hasattr(boxes, 'tolist') else boxes,
                                 "scores": [float(s) for s in scores] if hasattr(scores, 'tolist') else scores,
-                                "class_ids": [int(c) for c in class_ids] if hasattr(class_ids, 'tolist') else class_ids
+                                "class_ids": [int(c) for c in class_ids] if hasattr(class_ids, 'tolist') else class_ids,
+                                "timing": timing_dict
                             }
                             self.driver_res_pub.publish(json.dumps(res_data))
+                            
+                            if config.PRINT_TIMING_INFO:
+                                print(f"[\033[35mYOLO Driver\033[0m] {self.active_model_name} timing: {json.dumps(timing_dict)} (ms)")
                         
                         # 可视化绘制
                         for i, box in enumerate(boxes):

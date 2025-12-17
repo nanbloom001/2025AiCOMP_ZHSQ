@@ -5,9 +5,9 @@ import rospy
 import json
 from std_msgs.msg import String
 try:
-    from config import BIN_CLASS_NAMES, SPECIFIC_TRASH_NAMES, TRASH_COMMON_NAMES, TRASH_MAPPING
+    from config import BIN_CLASS_NAMES, SPECIFIC_TRASH_NAMES, TRASH_COMMON_NAMES, TRASH_MAPPING, PRINT_TIMING_INFO
 except ImportError:
-    from ..config import BIN_CLASS_NAMES, SPECIFIC_TRASH_NAMES, TRASH_COMMON_NAMES, TRASH_MAPPING
+    from ..config import BIN_CLASS_NAMES, SPECIFIC_TRASH_NAMES, TRASH_COMMON_NAMES, TRASH_MAPPING, PRINT_TIMING_INFO
 
 class GarbageTask(BaseTask):
     """
@@ -96,9 +96,12 @@ class GarbageTask(BaseTask):
             return image, None
 
         rospy.loginfo("[GarbageTask] Processing single frame...")
+        t0 = time.time()
         
         # 1. Detect Bins
         _, _, (bin_boxes, bin_scores, bin_class_ids) = self.bin_model.infer(image)
+        t1 = time.time()
+        
         raw_bins = []
         for box, score, cls_id in zip(bin_boxes, bin_scores, bin_class_ids):
             raw_bins.append({
@@ -110,6 +113,7 @@ class GarbageTask(BaseTask):
 
         # 2. Detect Trash
         _, _, (trash_boxes, trash_scores, trash_class_ids) = self.trash_model.infer(image)
+        t2 = time.time()
         
         # 调试日志：打印原始检测数量
         rospy.loginfo(f"[GarbageTask] Raw trash detection count: {len(trash_boxes)}")
@@ -136,7 +140,13 @@ class GarbageTask(BaseTask):
         # 3. 截取前 N 个 (例如 6 个，略多于实际数量以防漏检)
         MAX_ITEMS = 6
         processed_count = 0
+        inference_count = 0
         
+        rospy.loginfo(f"[GarbageTask] Candidates before filter: {len(trash_items)}")
+        
+        valid_crops = []
+        valid_items_meta = []
+
         for item in trash_items:
             if processed_count >= MAX_ITEMS:
                 break
@@ -154,16 +164,38 @@ class GarbageTask(BaseTask):
             crop = image[y1:y2, x1:x2]
             if crop.size == 0: continue
             
-            pred_idx = self.cls_model.infer(crop)
-            spec_name = SPECIFIC_TRASH_NAMES[pred_idx]
-            raw_trashes.append({
-                "name": spec_name, 
-                "cat_full": TRASH_MAPPING.get(spec_name, "未知"), 
+            valid_crops.append(crop)
+            valid_items_meta.append({
                 "box": [x1, y1, x2, y2]
             })
             processed_count += 1
+
+        # 批量推理
+        if valid_crops:
+            t_infer_start = time.time()
+            # Check if infer_batch exists (backward compatibility)
+            if hasattr(self.cls_model, 'infer_batch'):
+                pred_indices = self.cls_model.infer_batch(valid_crops)
+            else:
+                # Fallback if not updated
+                pred_indices = [self.cls_model.infer(c) for c in valid_crops]
+            t_infer_end = time.time()
             
-        rospy.loginfo(f"[GarbageTask] Processed trash items: {processed_count}")
+            inference_count = len(valid_crops)
+            if PRINT_TIMING_INFO:
+                print(f"[\033[33mGarbageTask\033[0m] Batch Classify {inference_count} items: {(t_infer_end - t_infer_start)*1000:.2f}ms")
+
+            for i, pred_idx in enumerate(pred_indices):
+                spec_name = SPECIFIC_TRASH_NAMES[pred_idx]
+                meta = valid_items_meta[i]
+                raw_trashes.append({
+                    "name": spec_name, 
+                    "cat_full": TRASH_MAPPING.get(spec_name, "未知"), 
+                    "box": meta["box"]
+                })
+            
+        t3 = time.time()
+        rospy.loginfo(f"[GarbageTask] Processed trash items: {processed_count}, Inferences: {inference_count}")
 
         # 3. Match Logic
         current_scene_pairs = []
@@ -215,6 +247,18 @@ class GarbageTask(BaseTask):
         
         result_str = "识别完成，" + "，".join(voice_list) if voice_list else "未检测到有效组合"
         
+        t4 = time.time()
+        timing_info = {
+            "bin_det": round((t1 - t0) * 1000, 2),
+            "trash_det": round((t2 - t1) * 1000, 2),
+            "classify": round((t3 - t2) * 1000, 2),
+            "post": round((t4 - t3) * 1000, 2),
+            "total": round((t4 - t0) * 1000, 2)
+        }
+        
+        if PRINT_TIMING_INFO:
+            print(f"[\033[33mGarbageTask Detail\033[0m] {json.dumps(timing_info)} (ms)")
+        
         # 6. Send Voice Command
         rospy.loginfo(f"[GarbageTask] Sending voice: {result_str}")
         
@@ -243,7 +287,7 @@ class GarbageTask(BaseTask):
         self.done = True
         rospy.loginfo(f"[GarbageTask] Single inference done. Result: {result_str}")
         
-        return res_img, f"done:{result_str}"
+        return res_img, f"done:{result_str} | timing={json.dumps(timing_info)}"
 
     def draw_scene(self, frame, pairs):
         for pair in pairs:

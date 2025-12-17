@@ -35,6 +35,9 @@ class OCRModel:
             raise
 
     def infer(self, image):
+        import time
+        t0 = time.time()
+        
         # Logic adapted from working ocr_camera_inference.py
         h, w = image.shape[:2]
         target_width = 640 
@@ -47,8 +50,10 @@ class OCRModel:
         else:
             image_resized = image
 
+        t1 = time.time()
         # Use predict() as in the working code
         result_list = self.ocr.predict(image_resized)
+        t2 = time.time()
         
         texts = []
         boxes = []
@@ -81,8 +86,15 @@ class OCRModel:
                             texts.append(text)
                     except Exception as e:
                         rospy.logwarn(f"OCR parse error: {e}")
-                        
-        return boxes, texts
+        
+        t3 = time.time()
+        timing = {
+            "pre": round((t1-t0)*1000, 2),
+            "infer": round((t2-t1)*1000, 2),
+            "post": round((t3-t2)*1000, 2),
+            "total": round((t3-t0)*1000, 2)
+        }
+        return boxes, texts, timing
 
 class OCRLoader:
     def __init__(self, config):

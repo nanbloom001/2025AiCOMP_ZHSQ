@@ -8,6 +8,9 @@ import termios
 import threading
 import tty
 import select
+import os
+import time
+import datetime
 
 import rospy
 from std_msgs.msg import String
@@ -18,6 +21,46 @@ from nav_manager_mod.goals import load_goals
 from nav_manager_mod.nav_executor import NavExecutor
 from nav_manager_mod.task_handler import TaskHandler
 
+# --- Debug Settings ---
+PRINT_NAV_TIMING = True
+
+class NavLogger:
+    def __init__(self):
+        self.log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+        if not os.path.exists(self.log_dir):
+            os.makedirs(self.log_dir)
+        
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.log_file = os.path.join(self.log_dir, f"nav_log_{timestamp}.txt")
+        
+        with open(self.log_file, "w") as f:
+            f.write(f"Navigation Log Started at {timestamp}\n")
+            f.write("="*50 + "\n")
+            
+    def log(self, msg):
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        line = f"[{timestamp}] {msg}"
+        with open(self.log_file, "a") as f:
+            f.write(line + "\n")
+            
+        if PRINT_NAV_TIMING:
+            print(f"[\033[32mNavLog\033[0m] {msg}")
+
+    def log_nav(self, goal_idx, duration, success):
+        status = "Success" if success else "Failed"
+        mins = int(duration // 60)
+        secs = duration % 60
+        self.log(f"NAV Goal {goal_idx+1}: Time={mins}m {secs:.2f}s Status={status}")
+
+    def log_task(self, goal_idx, task_type, duration, result):
+        mins = int(duration // 60)
+        secs = duration % 60
+        self.log(f"TASK Goal {goal_idx+1} [{task_type}]: Time={mins}m {secs:.2f}s Result={result}")
+        
+    def log_total(self, duration):
+        mins = int(duration // 60)
+        secs = duration % 60
+        self.log(f"TOTAL PROCESS TIME: {mins}m {secs:.2f}s")
 
 class NavigationManager:
     """
@@ -37,6 +80,7 @@ class NavigationManager:
 
         self.nav = NavExecutor()
         self.tasks = TaskHandler()
+        self.logger = NavLogger()
 
         self.status_pub = rospy.Publisher("/nav_ctrl/status", String, queue_size=5)
 
@@ -206,6 +250,8 @@ class NavigationManager:
         """
         rospy.loginfo("NavigationManager running.")
         rospy.sleep(0.5)
+        
+        total_start_time = time.time()
 
         while (
             not rospy.is_shutdown()
@@ -221,7 +267,10 @@ class NavigationManager:
                 rospy.sleep(0.2)
                 continue
 
+            nav_start_time = time.time()
             reached = self.nav.navigate(goal, self.cfg, self.state)
+            nav_duration = time.time() - nav_start_time
+            self.logger.log_nav(idx, nav_duration, reached)
             
             # 获取任务列表，如果没有则默认为 [Task("none", 0)]
             task_list = goal.tasks if goal.tasks else [Task("none", 0)]
@@ -239,9 +288,17 @@ class NavigationManager:
                         break
                         
                     rospy.loginfo(">>> Triggering task: %s (SeqID: %d)" % (task_item.type, task_item.seq_id))
+                    
+                    task_start_time = time.time()
                     self.tasks.trigger(task_item.type, task_item.seq_id)
                     
                     task_ok = self.tasks.wait_for_completion(task_item.type, self.cfg, self.state, task_timeout)
+                    task_duration = time.time() - task_start_time
+                    
+                    # Log task result
+                    result_str = self.state.task_result if task_ok else "TIMEOUT/FAILED"
+                    self.logger.log_task(idx, task_item.type, task_duration, result_str)
+                    
                     if not task_ok:
                         rospy.logwarn("Task '%s' failed/timeout/skipped." % task_item.type)
                         all_tasks_ok = False
@@ -263,6 +320,8 @@ class NavigationManager:
 
             self.publish_status()
 
+        total_duration = time.time() - total_start_time
+        self.logger.log_total(total_duration)
         rospy.loginfo("NavigationManager finished (all goals or shutdown).")
         self.publish_status()
 

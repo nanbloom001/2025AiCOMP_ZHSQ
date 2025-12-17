@@ -1,7 +1,3 @@
-import os
-import rospy
-import numpy as np
-
 # Lazy import torch to avoid dependency issues in OCR environment
 try:
     import torch
@@ -10,6 +6,10 @@ try:
     import torch.nn as nn
 except ImportError:
     torch = None
+
+import os
+import rospy
+import numpy as np
 
 from PIL import Image as PilImage
 
@@ -59,6 +59,33 @@ class ClassifierModel:
             out = self.model(inp)
             _, pred = torch.max(out, 1)
         return pred.item()
+
+    def infer_batch(self, image_crops):
+        """
+        Batch inference for multiple image crops.
+        Args:
+            image_crops: List of numpy arrays (BGR)
+        Returns:
+            List of predicted class indices
+        """
+        if not image_crops:
+            return []
+            
+        # Preprocess all images
+        batch_tensors = []
+        for crop in image_crops:
+            pil_img = PilImage.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
+            tensor = self.transform(pil_img)
+            batch_tensors.append(tensor)
+            
+        # Stack into a single batch tensor: [B, C, H, W]
+        batch_input = torch.stack(batch_tensors).to(self.device)
+        
+        with torch.no_grad():
+            out = self.model(batch_input)
+            _, preds = torch.max(out, 1)
+            
+        return preds.cpu().numpy().tolist()
 
 class YOLOv10Model:
     def __init__(self, onnx_path, input_size, confidence_thres=0.5, iou_thres=0.45, class_names=None, version="yolov10n"):
@@ -287,6 +314,79 @@ class OCRModel:
                         
         return boxes, texts
 
+class ClassifierONNXModel:
+    def __init__(self, model_path, num_classes=None):
+        try:
+            import onnxruntime
+        except ImportError:
+            rospy.logerr("onnxruntime not found")
+            raise
+
+        sess_options = onnxruntime.SessionOptions()
+        sess_options.intra_op_num_threads = os.cpu_count() or 4
+        sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+        providers = []
+        available = onnxruntime.get_available_providers()
+        if 'OpenVINOExecutionProvider' in available:
+            providers.append(('OpenVINOExecutionProvider', {'device_type': 'CPU'}))
+        providers.append('CPUExecutionProvider')
+
+        rospy.loginfo(f"Loading ONNX Classifier: {model_path} with providers: {providers}")
+        self.session = onnxruntime.InferenceSession(model_path, sess_options, providers=providers)
+        self.input_name = self.session.get_inputs()[0].name
+        
+        # Preprocessing constants
+        self.mean = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(1, 1, 3)
+        self.std = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(1, 1, 3)
+
+    def preprocess(self, image):
+        # image is BGR from cv2
+        img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        # Resize to 256 (smaller edge)
+        h, w = img.shape[:2]
+        if h < w:
+            new_h, new_w = 256, int(w * 256 / h)
+        else:
+            new_h, new_w = int(h * 256 / w), 256
+        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+        
+        # CenterCrop 224
+        h, w = img.shape[:2]
+        start_x = (w - 224) // 2
+        start_y = (h - 224) // 2
+        img = img[start_y:start_y+224, start_x:start_x+224]
+        
+        # Normalize
+        img = img.astype(np.float32) / 255.0
+        img = (img - self.mean) / self.std
+        
+        # HWC -> CHW
+        img = img.transpose(2, 0, 1)
+        return img
+
+    def infer(self, image_crop):
+        inp = self.preprocess(image_crop)
+        inp = np.expand_dims(inp, axis=0) # Add batch dim
+        
+        outputs = self.session.run(None, {self.input_name: inp})
+        pred = np.argmax(outputs[0], axis=1)
+        return int(pred[0])
+
+    def infer_batch(self, image_crops):
+        if not image_crops: return []
+        
+        batch_data = []
+        for crop in image_crops:
+            batch_data.append(self.preprocess(crop))
+            
+        batch_input = np.stack(batch_data, axis=0)
+        outputs = self.session.run(None, {self.input_name: batch_input})
+        preds = np.argmax(outputs[0], axis=1)
+        return preds.tolist()
+
 class ModelLoader:
     def __init__(self, config):
         self.config = config
@@ -306,7 +406,10 @@ class ModelLoader:
         
         if task_type == "classify":
             rospy.loginfo(f"Loading Classifier model: {name}")
-            model = ClassifierModel(cfg["path"], cfg["num_classes"])
+            if cfg["path"].endswith(".onnx"):
+                model = ClassifierONNXModel(cfg["path"], cfg.get("num_classes"))
+            else:
+                model = ClassifierModel(cfg["path"], cfg["num_classes"])
             self.models[name] = model
             return model
         else:

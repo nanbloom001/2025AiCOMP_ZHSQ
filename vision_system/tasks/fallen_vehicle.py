@@ -80,10 +80,13 @@ class FallenVehicleTask(BaseTask):
 
         # Start sequence if not running
         if not self.is_processing:
-            self.is_processing = True
-            self.stop_flag = False
-            self.worker_thread = threading.Thread(target=self.run_sequence)
-            self.worker_thread.start()
+            # Double check locking to prevent race condition
+            with self.lock:
+                if not self.is_processing:
+                    self.is_processing = True
+                    self.stop_flag = False
+                    self.worker_thread = threading.Thread(target=self.run_sequence)
+                    self.worker_thread.start()
             
         return image, None
 
@@ -138,6 +141,7 @@ class FallenVehicleTask(BaseTask):
 
         # Stitching
         rospy.loginfo("Stitching images...")
+        t_stitch_start = time.time()
         stitcher = Stitcher(
             detector="orb",
             confidence_threshold=0.1,
@@ -165,6 +169,7 @@ class FallenVehicleTask(BaseTask):
             rotation_thread.join()
             return
             
+        t_stitch_end = time.time()
         rospy.loginfo("Stitching done. Running inference...")
         
         # Save Stitched Image
@@ -181,7 +186,15 @@ class FallenVehicleTask(BaseTask):
                 rospy.logwarn(f"Failed to save stitched image: {e}")
 
         # Inference
-        res_img, _, (boxes, scores, class_ids) = self.model.infer(panorama)
+        res_img, timing, (boxes, scores, class_ids) = self.model.infer(panorama)
+        
+        full_timing = {
+            "stitch": round((t_stitch_end - t_stitch_start) * 1000, 2),
+            "infer": timing
+        }
+        
+        if config.PRINT_TIMING_INFO:
+            print(f"[\033[33mFallenVehicleTask Detail\033[0m] {json.dumps(full_timing)} (ms)")
         
         msg = None
         # 统计结果
@@ -200,10 +213,10 @@ class FallenVehicleTask(BaseTask):
         # 简单逻辑：如果有框，假设是倒伏
         if len(boxes) > 0:
             n2 = len(boxes)
-            msg = f"done_fallen_vehicle detected count={n2}"
+            msg = f"done_fallen_vehicle detected count={n2} | timing={json.dumps(full_timing)}"
             rospy.loginfo(f"Fallen vehicle detected! Count: {n2}")
         else:
-            msg = "done_fallen_vehicle none"
+            msg = f"done_fallen_vehicle none | timing={json.dumps(full_timing)}"
             rospy.loginfo("No fallen vehicle detected.")
             
         # 发送语音播报指令 (VoiceWavOnly - bikes)

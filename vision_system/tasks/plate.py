@@ -3,6 +3,7 @@ import json
 import re
 import math
 import threading
+import time
 from std_msgs.msg import String
 
 class PlateTask:
@@ -28,6 +29,8 @@ class PlateTask:
         self.result_callback_func = callback_func
         self.seq_id = seq_id
         self.receipt_event.clear()
+        # timing
+        self.start_time = time.time()
         
         # 1. 订阅 OCR 驱动的结果
         self.driver_sub = rospy.Subscriber("/vision/driver/ocr/result", String, self.on_driver_data)
@@ -69,6 +72,7 @@ class PlateTask:
             data = json.loads(msg.data)
             texts = data.get("texts", [])
             boxes = data.get("boxes", [])
+            timing = data.get("timing", {})
             
             if not texts: return
             
@@ -127,14 +131,14 @@ class PlateTask:
                 self.voice_pub.publish(json.dumps(cmd))
                 rospy.loginfo(f"[PlateTask] Voice command sent: {best_plate}")
 
-                # 启动异步线程等待回执，然后结束任务
-                threading.Thread(target=self.wait_for_receipt_and_finish, args=(best_plate,)).start()
-                
                 # 立即停止 OCR，防止重复触发
                 self.driver_pub.publish("stop")
                 if self.driver_sub:
                     self.driver_sub.unregister()
                     self.driver_sub = None
+
+                # 启动异步线程等待回执，然后结束任务
+                threading.Thread(target=self.wait_for_receipt_and_finish, args=(best_plate, timing)).start()
             else:
                 # 如果没有符合格式的，继续等待下一帧
                 pass
@@ -142,14 +146,22 @@ class PlateTask:
         except json.JSONDecodeError:
             pass
 
-    def wait_for_receipt_and_finish(self, best_plate):
+    def wait_for_receipt_and_finish(self, best_plate, timing=None):
         rospy.loginfo("[PlateTask] Waiting for voice receipt...")
         if self.receipt_event.wait(timeout=2.0):
             rospy.loginfo("[PlateTask] Receipt confirmed.")
         else:
             rospy.logwarn("[PlateTask] Receipt timeout, proceeding anyway.")
             
+        # compute duration
+        dur_ms = round((time.time() - getattr(self, 'start_time', time.time())) * 1000, 2)
+        result_str = f"done_plate {best_plate}"
+        if timing:
+            result_str += f" | timing={json.dumps(timing)}"
+        result_str += f" | duration_ms={dur_ms}"
+        rospy.loginfo(f"[PlateTask] Duration: {dur_ms} ms")
+        
         if self.result_callback_func:
-            self.result_callback_func(f"done_plate {best_plate}")
+            self.result_callback_func(result_str)
         self.stop()
  
