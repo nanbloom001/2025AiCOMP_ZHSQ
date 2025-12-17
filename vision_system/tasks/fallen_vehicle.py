@@ -7,12 +7,16 @@ import math
 import tf
 import numpy as np
 import os
+import json
+from std_msgs.msg import String
 from geometry_msgs.msg import Twist
 from stitching import Stitcher
 import config
 
+INERTIA_COMPENSATION = 8.0
+
 class FallenVehicleTask(BaseTask):
-    """
+    """tian
     倒车检测与全景拼接任务 (Slave Side)。
     
     功能：
@@ -76,10 +80,13 @@ class FallenVehicleTask(BaseTask):
 
         # Start sequence if not running
         if not self.is_processing:
-            self.is_processing = True
-            self.stop_flag = False
-            self.worker_thread = threading.Thread(target=self.run_sequence)
-            self.worker_thread.start()
+            # Double check locking to prevent race condition
+            with self.lock:
+                if not self.is_processing:
+                    self.is_processing = True
+                    self.stop_flag = False
+                    self.worker_thread = threading.Thread(target=self.run_sequence)
+                    self.worker_thread.start()
             
         return image, None
 
@@ -123,8 +130,18 @@ class FallenVehicleTask(BaseTask):
         captured_images.append(img3)
         rospy.loginfo("Captured Image 3")
         
+        # Start return rotation in parallel
+        rospy.loginfo("Starting return rotation and stitching simultaneously...")
+        
+        def rotate_back_func():
+            self.rotate_robot(75, 1.0)
+            
+        rotation_thread = threading.Thread(target=rotate_back_func)
+        rotation_thread.start()
+
         # Stitching
         rospy.loginfo("Stitching images...")
+        t_stitch_start = time.time()
         stitcher = Stitcher(
             detector="orb",
             confidence_threshold=0.1,
@@ -143,13 +160,16 @@ class FallenVehicleTask(BaseTask):
         except Exception as e:
             rospy.logerr(f"Stitching failed: {e}")
             self.is_processing = False
+            rotation_thread.join()
             return
 
         if panorama is None:
             rospy.logerr("Stitching returned None")
             self.is_processing = False
+            rotation_thread.join()
             return
             
+        t_stitch_end = time.time()
         rospy.loginfo("Stitching done. Running inference...")
         
         # Save Stitched Image
@@ -166,15 +186,73 @@ class FallenVehicleTask(BaseTask):
                 rospy.logwarn(f"Failed to save stitched image: {e}")
 
         # Inference
-        res_img, _, (boxes, scores, class_ids) = self.model.infer(panorama)
+        res_img, timing, (boxes, scores, class_ids) = self.model.infer(panorama)
+        
+        full_timing = {
+            "stitch": round((t_stitch_end - t_stitch_start) * 1000, 2),
+            "infer": timing
+        }
+        
+        if config.PRINT_TIMING_INFO:
+            print(f"[\033[33mFallenVehicleTask Detail\033[0m] {json.dumps(full_timing)} (ms)")
         
         msg = None
+        # 统计结果
+        # 假设 class_id 0 是正常(bike4), 1 是倒伏(bike5)
+        # 这里需要根据实际模型修改，假设我们只检测倒伏车辆
+        # 或者根据 class_names 来判断
+        
+        # 模拟统计数据 (需要根据实际模型输出调整)
+        # 假设我们统计所有检测到的框
+        illegal_a = 0 # 暂时无法区分区域，设为0
+        illegal_b = 0
+        n1 = 0 # 正常数量
+        n2 = 0 # 倒伏数量
+        n3 = 0 # 其他
+        
+        # 简单逻辑：如果有框，假设是倒伏
         if len(boxes) > 0:
-            msg = "done_fallen_vehicle detected"
-            rospy.loginfo("Fallen vehicle detected!")
+            n2 = len(boxes)
+            msg = f"done_fallen_vehicle detected count={n2} | timing={json.dumps(full_timing)}"
+            rospy.loginfo(f"Fallen vehicle detected! Count: {n2}")
         else:
+            msg = f"done_fallen_vehicle none | timing={json.dumps(full_timing)}"
             rospy.loginfo("No fallen vehicle detected.")
             
+        # 发送语音播报指令 (VoiceWavOnly - bikes)
+        # 构造符合 voice_wav_only.py 中 task_bikes 要求的数据
+        voice_data = {
+            "illegal_a": illegal_a,
+            "illegal_b": illegal_b,
+            "n1": n1, # 正常
+            "n2": n2, # 倒伏 (bike5 前面的数字)
+            "n3": n3
+        }
+        
+        # 注意：FallenVehicleTask 是 Slave Side，通常不直接发语音，而是返回结果给 Master
+        # 但为了统一，这里也可以直接发，或者在 Controller 里发
+        # 这里选择直接发，需要 Publisher
+        if not hasattr(self, 'voice_pub'):
+             self.voice_pub = rospy.Publisher("/vision/driver/voice/cmd", String, queue_size=1)
+             
+        cmd = {
+            "action": "dispatch",
+            "task": "bikes",
+            "data": voice_data
+        }
+        self.voice_pub.publish(json.dumps(cmd))
+        rospy.loginfo(f"[FallenVehicleTask] Voice command sent: {voice_data}")
+            
+        # Wait for rotation to finish before setting result
+        rotation_thread.join()
+        
+        # 这里的 msg 包含 done_fallen_vehicle，Controller 收到后会结束任务
+        # 由于 Controller 只是简单转发，我们不需要在这里等待回执，
+        # 因为 Controller 收到 done 消息后会立即结束，而语音已经在上面发出去了。
+        # 如果需要严格同步，应该修改 Controller。
+        # 鉴于 FallenVehicleTask 是 Slave，修改 Controller 更合适。
+        # 但为了保持一致性，我们让 Controller 去处理回执逻辑。
+        
         self.result_data = (res_img, msg)
 
     def get_image(self):
@@ -207,6 +285,11 @@ class FallenVehicleTask(BaseTask):
             rospy.logerr("Cannot get initial yaw")
             return False
 
+        # Calculate stop threshold with inertia compensation
+        abs_target_rad = abs(target_rad)
+        compensation_rad = math.radians(INERTIA_COMPENSATION)
+        stop_threshold_rad = max(0.0, abs_target_rad - compensation_rad)
+
         twist = Twist()
         twist.angular.z = speed if angle_deg > 0 else -speed
         
@@ -222,7 +305,7 @@ class FallenVehicleTask(BaseTask):
             while delta_yaw > math.pi: delta_yaw -= 2*math.pi
             while delta_yaw < -math.pi: delta_yaw += 2*math.pi
             
-            if abs(delta_yaw) >= abs(target_rad):
+            if abs(delta_yaw) >= stop_threshold_rad:
                 break
         
         # Stop

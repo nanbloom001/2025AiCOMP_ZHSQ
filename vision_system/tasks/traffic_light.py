@@ -1,5 +1,6 @@
 import rospy
 import json
+import time
 from std_msgs.msg import String
 class TrafficLightTask:
     """
@@ -27,6 +28,8 @@ class TrafficLightTask:
         """任务开始"""
         self.active = True
         self.status_callback_func = status_callback
+        # timing
+        self.start_time = time.time()
         
         # 1. 订阅 YOLO 驱动的结果
         self.driver_sub = rospy.Subscriber("/vision/driver/yolo/result", String, self.on_driver_data)
@@ -55,6 +58,7 @@ class TrafficLightTask:
                 return
                 
             class_ids = data.get("class_ids", [])
+            timing = data.get("timing", {})
             
             found_status = "null"
             current_labels = []
@@ -72,7 +76,11 @@ class TrafficLightTask:
             
             # 报告状态
             if self.status_callback_func:
-                self.status_callback_func(f"status_traffic_light {found_status}")
+                # compute duration since start
+                dur_ms = round((time.time() - getattr(self, 'start_time', time.time())) * 1000, 2)
+                msg = f"status_traffic_light {found_status} | timing={json.dumps(timing)} | duration_ms={dur_ms}"
+                rospy.loginfo(f"[TrafficLightTask] Status: {found_status}, timing (driver): {json.dumps(timing)} (ms), duration_ms={dur_ms}")
+                self.status_callback_func(msg)
                     
         except json.JSONDecodeError:
             pass

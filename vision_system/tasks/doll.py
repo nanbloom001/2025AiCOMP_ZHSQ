@@ -1,5 +1,7 @@
 import rospy
 import json
+import threading
+import time
 from std_msgs.msg import String
 from collections import Counter
 
@@ -11,8 +13,11 @@ class DollTask:
     def __init__(self):
         self.active = False
         self.driver_pub = rospy.Publisher("/vision/driver/yolo/cmd", String, queue_size=1)
+        self.voice_pub = rospy.Publisher("/vision/driver/voice/cmd", String, queue_size=1)
         self.driver_sub = None 
+        self.voice_status_sub = None
         self.done_callback_func = None 
+        self.receipt_event = threading.Event()
         
         # 存储 A 街区和 B 街区的识别结果 (Set of strings)
         self.block_a_results = set()
@@ -33,6 +38,9 @@ class DollTask:
         self.current_seq_id = seq_id
         self.frame_count = 0
         self.detection_buffer = []
+        self.receipt_event.clear()
+        # timing
+        self.start_time = time.time()
         
         # 异常机制：如果出现除了0-5之外的序号则控制台报错，并直接返回任务成功
         if not (0 <= seq_id <= 5):
@@ -43,6 +51,11 @@ class DollTask:
             return
 
         self.driver_sub = rospy.Subscriber("/vision/driver/yolo/result", String, self.on_driver_data)
+        
+        # 订阅语音回执
+        if self.voice_status_sub:
+            self.voice_status_sub.unregister()
+        self.voice_status_sub = rospy.Subscriber("/vision/driver/voice/status", String, self.voice_status_cb)
         
         # 使用 people_v2 模型 (Driver 中映射为 "doll")
         rospy.loginfo(f"[DollTask] Starting task with seq_id={seq_id}. Requesting YOLO Driver START (model=doll)...")
@@ -55,6 +68,17 @@ class DollTask:
         if self.driver_sub:
             self.driver_sub.unregister()
             self.driver_sub = None
+        if self.voice_status_sub:
+            self.voice_status_sub.unregister()
+            self.voice_status_sub = None
+
+    def voice_status_cb(self, msg):
+        try:
+            data = json.loads(msg.data)
+            if data.get("status") == "received" and data.get("original_task") == "stacking":
+                self.receipt_event.set()
+        except:
+            pass
 
     def on_driver_data(self, msg):
         if not self.active: return
@@ -64,6 +88,14 @@ class DollTask:
             # 兼容 model 名
             if data.get("model") != "doll":
                 return
+            
+            timing = data.get("timing", {})
+            
+            # 立即停止 YOLO，实现"单帧"效果
+            self.driver_pub.publish("stop")
+            if self.driver_sub:
+                self.driver_sub.unregister()
+                self.driver_sub = None
                 
             class_ids = data.get("class_ids", [])
             # 提取当前帧检测到的目标类别
@@ -72,38 +104,28 @@ class DollTask:
                 if isinstance(cid, int) and 0 <= cid < len(self.target_classes):
                     current_frame_classes.append(self.target_classes[cid])
             
-            self.detection_buffer.append(current_frame_classes)
-            self.frame_count += 1
-            
-            # 连续保存5次的识别结果
-            if self.frame_count >= 5:
-                self.process_results()
-                self.stop()
+            # 直接处理单帧结果
+            self.process_results(current_frame_classes, timing)
+            self.stop()
                     
         except json.JSONDecodeError:
             pass
 
-    def process_results(self):
-        # 统计 5 帧内的结果
-        # 设定一个阈值如3次，超过这个阈值即判断为真
+    def process_results(self, detected_classes, timing=None):
+        # 单帧模式，直接使用检测结果
+        # 去重
+        detected_classes = list(set(detected_classes))
         
-        class_counts = Counter()
-        for frame_classes in self.detection_buffer:
-            # 去重，一帧内多次出现只算一次
-            unique_classes_in_frame = set(frame_classes)
-            for cls in unique_classes_in_frame:
-                class_counts[cls] += 1
-        
-        detected_classes = []
-        for cls, count in class_counts.items():
-            if count >= 3:
-                detected_classes.append(cls)
-        
-        rospy.loginfo(f"[DollTask] Seq {self.current_seq_id} Raw Detection (>=3/5 frames): {detected_classes}")
+        rospy.loginfo(f"[DollTask] Seq {self.current_seq_id} Single Frame Detection: {detected_classes}")
 
         # 如果出现序号0，则直接返回识别结果，但不存入列表
         if self.current_seq_id == 0:
             result_str = f"done_doll {len(detected_classes)}"
+            if timing:
+                result_str += f" | timing={json.dumps(timing)}"
+            # append duration in ms
+            dur_ms = round((time.time() - getattr(self, 'start_time', time.time())) * 1000, 2)
+            result_str += f" | duration_ms={dur_ms}"
             if self.done_callback_func:
                 self.done_callback_func(result_str)
             return
@@ -156,5 +178,58 @@ class DollTask:
             rospy.loginfo(f" Block B Stats: Non-Community (Bad)={b_bad}, Community (Good)={b_good}")
             rospy.loginfo("="*30)
 
+            # 发送语音播报
+            n2 = a_bad + a_good
+            n3 = b_bad + b_good
+            n1 = n2 + n3
+            n4 = a_bad
+            n5 = b_bad
+            
+            voice_data = {
+                "n1": n1,
+                "n2": n2,
+                "n3": n3,
+                "n4": n4,
+                "n5": n5
+            }
+            
+            cmd = {
+                "action": "dispatch",
+                "task": "stacking",
+                "data": voice_data
+            }
+            self.voice_pub.publish(json.dumps(cmd))
+            rospy.loginfo(f"[DollTask] Voice command sent: {voice_data}")
+            
+            # 启动异步线程等待回执，然后结束任务
+            threading.Thread(target=self.wait_for_receipt_and_finish, args=(len(detected_classes), timing)).start()
+            return
+
+        result_str = f"done_doll {len(detected_classes)}"
+        if timing:
+            result_str += f" | timing={json.dumps(timing)}"
+        dur_ms = round((time.time() - getattr(self, 'start_time', time.time())) * 1000, 2)
+        result_str += f" | duration_ms={dur_ms}"
+            
         if self.done_callback_func:
-            self.done_callback_func(f"done_doll {len(detected_classes)}")
+            self.done_callback_func(result_str)
+        self.stop()
+
+    def wait_for_receipt_and_finish(self, count, timing=None):
+        rospy.loginfo("[DollTask] Waiting for voice receipt...")
+        if self.receipt_event.wait(timeout=2.0):
+            rospy.loginfo("[DollTask] Receipt confirmed.")
+        else:
+            rospy.logwarn("[DollTask] Receipt timeout, proceeding anyway.")
+            
+        result_str = f"done_doll {count}"
+        if timing:
+            result_str += f" | timing={json.dumps(timing)}"
+            
+        if self.done_callback_func:
+            self.done_callback_func(result_str)
+        self.stop()
+            
+        if self.done_callback_func:
+            self.done_callback_func(f"done_doll {count}")
+        self.stop()

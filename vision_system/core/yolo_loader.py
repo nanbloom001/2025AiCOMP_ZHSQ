@@ -59,6 +59,89 @@ class ClassifierModel:
             _, pred = torch.max(out, 1)
         return pred.item()
 
+class ClassifierONNXModel:
+    def __init__(self, model_path, num_classes=None):
+        if onnxruntime is None:
+            rospy.logerr("onnxruntime not found")
+            raise ImportError("onnxruntime not found")
+
+        sess_options = onnxruntime.SessionOptions()
+        sess_options.intra_op_num_threads = os.cpu_count() or 4
+        sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+        providers = []
+        available = onnxruntime.get_available_providers()
+        if 'OpenVINOExecutionProvider' in available:
+            providers.append(('OpenVINOExecutionProvider', {'device_type': 'CPU'}))
+        providers.append('CPUExecutionProvider')
+
+        rospy.loginfo(f"Loading ONNX Classifier: {model_path} with providers: {providers}")
+        self.session = onnxruntime.InferenceSession(model_path, sess_options, providers=providers)
+        self.input_name = self.session.get_inputs()[0].name
+        
+        # Preprocessing constants
+        self.mean = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(1, 1, 3)
+        self.std = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(1, 1, 3)
+
+    def preprocess(self, image):
+        # image is BGR from cv2
+        img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        # Resize to 256 (smaller edge)
+        h, w = img.shape[:2]
+        if h < w:
+            new_h, new_w = 256, int(w * 256 / h)
+        else:
+            new_h, new_w = int(h * 256 / w), 256
+        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+        
+        # CenterCrop 224
+        h, w = img.shape[:2]
+        start_x = (w - 224) // 2
+        start_y = (h - 224) // 2
+        img = img[start_y:start_y+224, start_x:start_x+224]
+        
+        # Normalize
+        img = img.astype(np.float32) / 255.0
+        img = (img - self.mean) / self.std
+        
+        # HWC -> CHW
+        img = img.transpose(2, 0, 1)
+        return img
+
+    def infer(self, image_crop):
+        inp = self.preprocess(image_crop)
+        inp = np.expand_dims(inp, axis=0) # Add batch dim
+        
+        outputs = self.session.run(None, {self.input_name: inp})
+        pred = np.argmax(outputs[0], axis=1)
+        return int(pred[0])
+
+    def infer_batch(self, image_crops):
+        if not image_crops: return []
+        
+        batch_data = []
+        for crop in image_crops:
+            batch_data.append(self.preprocess(crop))
+            
+        batch_input = np.stack(batch_data, axis=0)
+        
+        try:
+            outputs = self.session.run(None, {self.input_name: batch_input})
+            preds = np.argmax(outputs[0], axis=1)
+            return preds.tolist()
+        except Exception as e:
+            rospy.logwarn(f"Batch inference failed, falling back to sequential: {e}")
+            # Fallback to sequential
+            preds = []
+            for inp in batch_data:
+                inp = np.expand_dims(inp, axis=0)
+                outputs = self.session.run(None, {self.input_name: inp})
+                pred = np.argmax(outputs[0], axis=1)
+                preds.append(int(pred[0]))
+            return preds
+
 class YOLOv10Model:
     def __init__(self, onnx_path, input_size, confidence_thres=0.5, iou_thres=0.45, class_names=None, version="yolov10n"):
         if onnxruntime is None:
@@ -185,10 +268,15 @@ class YOLOv10Model:
 
     def infer(self, image):
         import time
-        t_start = time.time()
+        t0 = time.time()
         input_tensor = self.preprocess(image)
+        t1 = time.time()
+        
         outputs = self.session.run([self.output_name], {self.input_name: input_tensor})
+        t2 = time.time()
+        
         boxes, scores, class_ids = self.postprocess(outputs)
+        t3 = time.time()
         
         # Draw detections on a copy of the image
         res_img = image.copy()
@@ -198,8 +286,13 @@ class YOLOv10Model:
             cv2.rectangle(res_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(res_img, f"{label} {score:.2f}", (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             
-        inference_time = (time.time() - t_start) * 1000
-        return res_img, inference_time, (boxes, scores, class_ids)
+        timing = {
+            "pre": round((t1 - t0) * 1000, 2),
+            "infer": round((t2 - t1) * 1000, 2),
+            "post": round((t3 - t2) * 1000, 2),
+            "total": round((t3 - t0) * 1000, 2)
+        }
+        return res_img, timing, (boxes, scores, class_ids)
 
 class YOLOLoader:
     def __init__(self, config):
@@ -217,10 +310,16 @@ class YOLOLoader:
 
         try:
             if cfg.get("task_type") == "classify":
-                model = ClassifierModel(
-                    model_path=cfg["path"],
-                    num_classes=cfg["num_classes"]
-                )
+                if cfg["path"].endswith(".onnx"):
+                    model = ClassifierONNXModel(
+                        model_path=cfg["path"],
+                        num_classes=cfg.get("num_classes")
+                    )
+                else:
+                    model = ClassifierModel(
+                        model_path=cfg["path"],
+                        num_classes=cfg["num_classes"]
+                    )
             else:
                 # Default to YOLO
                 model = YOLOv10Model(

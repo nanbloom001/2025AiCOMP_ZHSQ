@@ -14,6 +14,9 @@ DEFAULT_CONFIG = {
 SAVE_RESULT_IMAGES = True
 SAVE_RESULT_DIR = os.path.join(CURRENT_DIR, "task_save")
 
+# --- Debug Settings ---
+PRINT_TIMING_INFO = True
+
 # --- 1. 垃圾桶类别 (Model A) ---
 BIN_CLASS_NAMES = [
     'blue_close', 'blue_open', 'green_close', 'green_open',
@@ -80,7 +83,7 @@ MODEL_LIST = [
     },
     {
         "name": "best_classify",
-        "path": os.path.join(YOLO_MODELS_DIR, "best_classify.pth"),
+        "path": os.path.join(YOLO_MODELS_DIR, "best_classify.onnx"),
         "task_type": "classify",
         "num_classes": len(SPECIFIC_TRASH_NAMES),
         "class_names": SPECIFIC_TRASH_NAMES
@@ -90,18 +93,18 @@ MODEL_LIST = [
         "path": os.path.join(YOLO_MODELS_DIR, "eb.onnx"),
         "version": "yolov10n",
         "task_type": "detect",
-        "input_size": 416,
+        "input_size": 640,
         "conf_thres": 0.25,
         "iou_thres": 0.45,
-        "class_names": ["0","1"]
+        "class_names": ["fallen","normal"]
     },
     {
         "name": "fire",
         "path": os.path.join(YOLO_MODELS_DIR, "fire.onnx"),
         "version": "yolov10n",
         "task_type": "detect",
-        "input_size": 416,
-        "conf_thres": 0.25,
+        "input_size": 640,
+        "conf_thres": 0.472,
         "iou_thres": 0.45,
         "class_names": ["fire"]
     },

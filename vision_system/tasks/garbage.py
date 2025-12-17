@@ -5,9 +5,9 @@ import rospy
 import json
 from std_msgs.msg import String
 try:
-    from config import BIN_CLASS_NAMES, SPECIFIC_TRASH_NAMES, TRASH_COMMON_NAMES, TRASH_MAPPING
+    from config import BIN_CLASS_NAMES, SPECIFIC_TRASH_NAMES, TRASH_COMMON_NAMES, TRASH_MAPPING, PRINT_TIMING_INFO
 except ImportError:
-    from ..config import BIN_CLASS_NAMES, SPECIFIC_TRASH_NAMES, TRASH_COMMON_NAMES, TRASH_MAPPING
+    from ..config import BIN_CLASS_NAMES, SPECIFIC_TRASH_NAMES, TRASH_COMMON_NAMES, TRASH_MAPPING, PRINT_TIMING_INFO
 
 class GarbageTask(BaseTask):
     """
@@ -51,21 +51,7 @@ class GarbageTask(BaseTask):
 
     def reset_state(self):
         """重置内部状态变量。"""
-        self.start_time = None
-        self.last_process_time = 0
-        self.last_bin_detect_time = 0
-        self.cached_bins = []
-        self.locked = False
-        self.best_scene = []
-        self.max_items_count = 0
-        self.observation_duration = 3.0
-        self.voice_sent = False # Re-added this flag
-        self.voice_sent_count = 0 
-        
-        # History for smart exit and mode calculation
-        self.scene_history = [] 
-        self.consistency_count = 0
-        self.last_scene_signature = None
+        self.done = False
 
     def calculate_best_scene_from_history(self):
         if not self.scene_history: return
@@ -106,87 +92,71 @@ class GarbageTask(BaseTask):
             self.reset_state()
             return image, None
             
-        if self.start_time is None:
-            self.start_time = time.time()
-            rospy.loginfo(f"[GarbageTask] First frame processed. Latency check.")
-            
-        current_time = time.time()
-        
-        # If locked, draw best scene and return result
-        if self.locked:
-            res_img = image.copy()
-            self.draw_scene(res_img, self.best_scene)
-            cv2.rectangle(res_img, (0, 0), (res_img.shape[1], 60), (0, 100, 0), -1)
-            cv2.putText(res_img, "RESULT LOCKED", (20, 40), 0, 0.8, (255,255,255), 2)
-            
-            # Prepare result string (re-calculate or cache? Re-calc is safer for now as best_scene is fixed)
-            voice_list = []
-            target_scene = self.best_scene if self.best_scene else []
-            for pair in target_scene:
-                msg = f"{pair['bin_cat']}垃圾桶状态为{pair['bin_state']}"
-                if pair['trash_name'] != "无":
-                    msg += f"，垃圾为{pair['trash_name']}，投放{pair['judgement']}"
-                voice_list.append(msg)
-            result_str = "识别完成，" + "，".join(voice_list) if voice_list else "未检测到有效组合"
-
-            # Send voice command multiple times (e.g., 5 frames) to ensure delivery
-            if self.voice_sent_count < 5:
-                self.voice_sent_count += 1
-                self.voice_sent = True # Mark as sent
-                rospy.loginfo(f"[GarbageTask] Sending voice (Attempt {self.voice_sent_count}/5): {result_str}")
-                return res_img, f"voice:{result_str}"
-            
-            # Send DONE signal once after voice commands
-            if self.voice_sent_count == 5:
-                self.voice_sent_count += 1
-                rospy.loginfo(f"[GarbageTask] Sending DONE signal: {result_str}")
-                return res_img, f"done:{result_str}"
-            
-            return res_img, None
-
-        # Observation phase
-        elapsed = current_time - self.start_time
-        remaining = max(0.0, self.observation_duration - elapsed)
-        
-        # --- Optimization 1: Frame Skipping (Max 5 FPS) ---
-        if current_time - self.last_process_time < 0.2:
-            # Skip inference, just draw previous result if available? 
-            # Or just return original image.
-            # For smooth visualization, we might want to draw the LAST known scene.
-            if self.best_scene:
-                res_img = image.copy()
-                self.draw_scene(res_img, self.best_scene) # Draw best scene so far
-                cv2.rectangle(res_img, (0, 0), (res_img.shape[1], 50), (50, 50, 50), -1)
-                cv2.putText(res_img, f"SCANNING... {remaining:.1f}s (Skipped)", (20, 35), 0, 1, (0, 255, 255), 2)
-                return res_img, None
+        if self.done:
             return image, None
-            
-        self.last_process_time = current_time
 
-        # --- Optimization 2: Bin Detection Throttling (Every 1.0s) ---
+        rospy.loginfo("[GarbageTask] Processing single frame...")
+        t0 = time.time()
+        
+        # 1. Detect Bins
+        _, _, (bin_boxes, bin_scores, bin_class_ids) = self.bin_model.infer(image)
+        t1 = time.time()
+        
         raw_bins = []
-        if current_time - self.last_bin_detect_time > 1.0 or not self.cached_bins:
-            # Run Bin Detection
-            _, _, (bin_boxes, bin_scores, bin_class_ids) = self.bin_model.infer(image)
-            for box, score, cls_id in zip(bin_boxes, bin_scores, bin_class_ids):
-                raw_bins.append({
-                    "cls": int(cls_id), 
-                    "box": box, 
-                    "name": self.bin_model.class_names[int(cls_id)]
-                })
-            raw_bins.sort(key=lambda x: x['box'][0]) # Sort by x1
-            self.cached_bins = raw_bins
-            self.last_bin_detect_time = current_time
-        else:
-            # Use Cached Bins
-            raw_bins = self.cached_bins
+        for box, score, cls_id in zip(bin_boxes, bin_scores, bin_class_ids):
+            raw_bins.append({
+                "cls": int(cls_id), 
+                "box": box, 
+                "name": self.bin_model.class_names[int(cls_id)]
+            })
+        raw_bins.sort(key=lambda x: x['box'][0]) # Sort by x1
 
-        # 2. Detect Trash (Always run)
+        # 2. Detect Trash
         _, _, (trash_boxes, trash_scores, trash_class_ids) = self.trash_model.infer(image)
+        t2 = time.time()
+        
+        # 调试日志：打印原始检测数量
+        rospy.loginfo(f"[GarbageTask] Raw trash detection count: {len(trash_boxes)}")
+        
         raw_trashes = []
-        for box in trash_boxes:
+        
+        # 优化：按置信度排序并限制数量，防止误检过多导致超时
+        # 即使只有4个真实垃圾，模型可能会检测出几十个低置信度的噪点
+        # 如果不对数量和置信度做限制，会对每一个噪点进行分类推理，导致总耗时激增
+        
+        # 1. 组合数据
+        trash_items = []
+        if len(trash_boxes) > 0:
+            for i in range(len(trash_boxes)):
+                trash_items.append({
+                    "box": trash_boxes[i],
+                    "score": trash_scores[i] if len(trash_scores) > i else 0,
+                    "cls": trash_class_ids[i] if len(trash_class_ids) > i else 0
+                })
+        
+        # 2. 按置信度降序排序
+        trash_items.sort(key=lambda x: x["score"], reverse=True)
+        
+        # 3. 截取前 N 个 (例如 6 个，略多于实际数量以防漏检)
+        MAX_ITEMS = 6
+        processed_count = 0
+        inference_count = 0
+        
+        rospy.loginfo(f"[GarbageTask] Candidates before filter: {len(trash_items)}")
+        
+        valid_crops = []
+        valid_items_meta = []
+
+        for item in trash_items:
+            if processed_count >= MAX_ITEMS:
+                break
+                
+            # 4. 过滤低置信度 (例如 0.4)
+            if item["score"] < 0.4:
+                continue
+                
+            box = item["box"]
             x1, y1, x2, y2 = map(int, box)
-            # Ensure crop is within image bounds
             h, w = image.shape[:2]
             x1, y1 = max(0, x1), max(0, y1)
             x2, y2 = min(w, x2), min(h, y2)
@@ -194,13 +164,38 @@ class GarbageTask(BaseTask):
             crop = image[y1:y2, x1:x2]
             if crop.size == 0: continue
             
-            pred_idx = self.cls_model.infer(crop)
-            spec_name = SPECIFIC_TRASH_NAMES[pred_idx]
-            raw_trashes.append({
-                "name": spec_name, 
-                "cat_full": TRASH_MAPPING.get(spec_name, "未知"), 
+            valid_crops.append(crop)
+            valid_items_meta.append({
                 "box": [x1, y1, x2, y2]
             })
+            processed_count += 1
+
+        # 批量推理
+        if valid_crops:
+            t_infer_start = time.time()
+            # Check if infer_batch exists (backward compatibility)
+            if hasattr(self.cls_model, 'infer_batch'):
+                pred_indices = self.cls_model.infer_batch(valid_crops)
+            else:
+                # Fallback if not updated
+                pred_indices = [self.cls_model.infer(c) for c in valid_crops]
+            t_infer_end = time.time()
+            
+            inference_count = len(valid_crops)
+            if PRINT_TIMING_INFO:
+                print(f"[\033[33mGarbageTask\033[0m] Batch Classify {inference_count} items: {(t_infer_end - t_infer_start)*1000:.2f}ms")
+
+            for i, pred_idx in enumerate(pred_indices):
+                spec_name = SPECIFIC_TRASH_NAMES[pred_idx]
+                meta = valid_items_meta[i]
+                raw_trashes.append({
+                    "name": spec_name, 
+                    "cat_full": TRASH_MAPPING.get(spec_name, "未知"), 
+                    "box": meta["box"]
+                })
+            
+        t3 = time.time()
+        rospy.loginfo(f"[GarbageTask] Processed trash items: {processed_count}, Inferences: {inference_count}")
 
         # 3. Match Logic
         current_scene_pairs = []
@@ -223,6 +218,7 @@ class GarbageTask(BaseTask):
                 "bin_state": b_state,
                 "bin_color": b_color,
                 "trash_box": matched_trash["box"] if matched_trash else None,
+                "trash_key": matched_trash["name"] if matched_trash else None,
                 "trash_name": TRASH_COMMON_NAMES.get(matched_trash["name"], matched_trash["name"]) if matched_trash else "无",
                 "judgement": "未知"
             }
@@ -237,96 +233,61 @@ class GarbageTask(BaseTask):
 
             current_scene_pairs.append(pair_data)
 
-        # 4. Update History & Check Consistency (Smart Exit)
-        # Signature: (bin_cat, bin_state, trash_name, judgement) for each pair
-        sig = tuple((p['bin_cat'], p['bin_state'], p['trash_name'], p['judgement']) for p in current_scene_pairs)
-        self.scene_history.append({'sig': sig, 'scene': current_scene_pairs})
-        
-        # Strict Smart Exit Condition: 
-        # 1. Must have 4 bins
-        # 2. Each bin must have trash (trash_name != "无")
-        bins_count = len(current_scene_pairs)
-        trash_count = sum(1 for p in current_scene_pairs if p['trash_name'] != "无")
-        
-        is_complete = (bins_count == 4 and trash_count == 4)
-        
-        if is_complete:
-            if sig == self.last_scene_signature:
-                self.consistency_count += 1
-            else:
-                self.consistency_count = 1
-            self.last_scene_signature = sig
-            
-            # Early Exit: 2 consecutive consistent frames with 4 bins
-            if self.consistency_count >= 2:
-                rospy.loginfo(f"[GarbageTask] Smart Exit: Consistent result found (Count: {self.consistency_count})")
-                rospy.loginfo(f"[GarbageTask] Exit Signature: {sig}")
-                self.best_scene = current_scene_pairs
-                remaining = 0.0 # Trigger lock
-        else:
-            if bins_count == 4:
-                 # Debug: Found 4 bins but signature changed
-                 pass
-            self.consistency_count = 0
-            self.last_scene_signature = None
-
-        # 5. Draw
+        # 4. Draw Result
         res_img = image.copy()
         self.draw_scene(res_img, current_scene_pairs)
         
-        # UI
-        cv2.rectangle(res_img, (0, 0), (res_img.shape[1], 50), (50, 50, 50), -1)
-        cv2.putText(res_img, f"SCANNING... {remaining:.1f}s | Bins: {len(raw_bins)} | Trash: {trash_count}", (20, 35), 0, 1, (0, 255, 255), 2)
+        # 5. Generate Result String
+        voice_list = []
+        for pair in current_scene_pairs:
+            msg = f"{pair['bin_cat']}垃圾桶状态为{pair['bin_state']}"
+            if pair['trash_name'] != "无":
+                msg += f"，垃圾为{pair['trash_name']}，投放{pair['judgement']}"
+            voice_list.append(msg)
+        
+        result_str = "识别完成，" + "，".join(voice_list) if voice_list else "未检测到有效组合"
+        
+        t4 = time.time()
+        timing_info = {
+            "bin_det": round((t1 - t0) * 1000, 2),
+            "trash_det": round((t2 - t1) * 1000, 2),
+            "classify": round((t3 - t2) * 1000, 2),
+            "post": round((t4 - t3) * 1000, 2),
+            "total": round((t4 - t0) * 1000, 2)
+        }
+        
+        if PRINT_TIMING_INFO:
+            print(f"[\033[33mGarbageTask Detail\033[0m] {json.dumps(timing_info)} (ms)")
+        
+        # 6. Send Voice Command
+        rospy.loginfo(f"[GarbageTask] Sending voice: {result_str}")
+        
+        # 使用 VoiceTaskDispatcher 格式的数据
+        # 构造符合 voice_wav_only.py 中 task_trash_bin 要求的列表数据
+        voice_data_list = []
+        for pair in current_scene_pairs:
+            voice_data_list.append({
+                "type": self.DISPLAY_MAP.get(pair['bin_cat'], 'other').lower(), # recycle, kitchen, harmful, other
+                "action": self.DISPLAY_MAP.get(pair['bin_state'], 'close').lower(), # open, close
+                "trash_name": pair['trash_key'] if pair['trash_key'] else None, # Use KEY (e.g. 00_clamp) not Chinese name
+                "check": self.DISPLAY_MAP.get(pair['judgement'], 'wrong').lower() # correct -> right, wrong
+            })
+            # 修正 correct -> right 映射
+            if voice_data_list[-1]["check"] == "correct":
+                voice_data_list[-1]["check"] = "right"
 
-        if remaining == 0:
-            self.locked = True
-            
-            # If not set by early exit, calculate mode from history
-            if not self.best_scene:
-                self.calculate_best_scene_from_history()
-            
-            # Prepare result string
-            voice_list = []
-            # Use best_scene if available, otherwise use current (fallback)
-            target_scene = self.best_scene if self.best_scene else current_scene_pairs
-            
-            for pair in target_scene:
-                # Always report bin status
-                msg = f"{pair['bin_cat']}垃圾桶状态为{pair['bin_state']}"
-                # If trash detected, append trash info
-                if pair['trash_name'] != "无":
-                    msg += f"，垃圾为{pair['trash_name']}，投放{pair['judgement']}"
-                voice_list.append(msg)
-            
-            result_str = "识别完成，" + "，".join(voice_list) if voice_list else "未检测到有效组合"
-
-            # Send voice command multiple times (e.g., 5 frames) to ensure delivery
-            if self.voice_sent_count < 5:
-                self.voice_sent_count += 1
-                self.voice_sent = True
-                rospy.loginfo(f"[GarbageTask] Sending voice (Attempt {self.voice_sent_count}/5): {result_str}")
-                
-                # Direct publish to Voice Node - Only send ONCE to avoid repetition
-                if self.voice_sent_count == 1:
-                    cmd = {
-                        "action": "say",
-                        "text": result_str,
-                        "id": "garbage_direct",
-                        "speed": 2
-                    }
-                    self.voice_pub.publish(json.dumps(cmd))
-                
-                return res_img, f"voice:{result_str}"
-            
-            # Send DONE signal once after voice commands to notify Master
-            if self.voice_sent_count == 5:
-                self.voice_sent_count += 1
-                rospy.loginfo(f"[GarbageTask] Sending DONE signal: {result_str}")
-                return res_img, f"done:{result_str}"
-            
-            return res_img, None
-            
-        return res_img, None
+        cmd = {
+            "action": "dispatch",
+            "task": "trash_bin",
+            "data": voice_data_list
+        }
+        self.voice_pub.publish(json.dumps(cmd))
+        
+        # 7. Mark as Done
+        self.done = True
+        rospy.loginfo(f"[GarbageTask] Single inference done. Result: {result_str}")
+        
+        return res_img, f"done:{result_str} | timing={json.dumps(timing_info)}"
 
     def draw_scene(self, frame, pairs):
         for pair in pairs:

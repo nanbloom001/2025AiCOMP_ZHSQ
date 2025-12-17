@@ -192,8 +192,8 @@ class OCRNode:
                         rate.sleep()
                         continue
                     t_start = time.time()
-                    boxes, texts = self.model.infer(frame)
-                    inference_time = (time.time() - t_start) * 1000
+                    boxes, texts, timing = self.model.infer(frame)
+                    inference_time = timing.get('total', 0)
                     
                     # 发布结果
                     if texts:
@@ -201,9 +201,13 @@ class OCRNode:
                         serializable_boxes = [b.tolist() if hasattr(b, 'tolist') else b for b in boxes]
                         res_data = {
                             "texts": texts,
-                            "boxes": serializable_boxes
+                            "boxes": serializable_boxes,
+                            "timing": timing
                         }
                         self.driver_res_pub.publish(json.dumps(res_data))
+                        
+                        if config.PRINT_TIMING_INFO:
+                            print(f"[\033[35mOCR Driver\033[0m] timing: {json.dumps(timing)}")
 
                     # 可视化绘制
                     for i, box in enumerate(boxes):
