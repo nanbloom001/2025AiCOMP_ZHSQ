@@ -17,16 +17,16 @@ INERTIA_COMPENSATION = 8.0
 
 # 旋转动作配置 (角度: 度, 速度: rad/s)
 # 1. 初始向右旋转
-ROTATE_1_ANGLE = -105
+ROTATE_1_ANGLE = -110
 ROTATE_1_SPEED = 1.0
 # 2. 向左旋转第一次
-ROTATE_2_ANGLE = 18
+ROTATE_2_ANGLE = 23
 ROTATE_2_SPEED = 1.0
 # 3. 向左旋转第二次
-ROTATE_3_ANGLE = 18
+ROTATE_3_ANGLE = 23
 ROTATE_3_SPEED = 1.0
 # 4. 返回旋转 (并行)
-ROTATE_BACK_ANGLE = 75
+ROTATE_BACK_ANGLE = 64
 ROTATE_BACK_SPEED = 1.0
 
 class FallenVehicleTask(BaseTask):

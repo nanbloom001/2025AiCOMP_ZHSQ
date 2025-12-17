@@ -1,0 +1,4 @@
+Navigation Log Started at 20251218_032035
+==================================================
+[03:20:46.017] NAV Goal 1: Time=0m 5.09s Status=Failed
+[03:20:46.020] TOTAL PROCESS TIME: 0m 5.10s

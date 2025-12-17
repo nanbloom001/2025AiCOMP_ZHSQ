@@ -63,9 +63,11 @@ class YOLONode:
         self.driver_res_pub = rospy.Publisher("/vision/driver/yolo/result", String, queue_size=1)
         
         self.img_sub = rospy.Subscriber(self.image_topic, Image, self.image_callback, queue_size=1, buff_size=2**24)
+        self.snapshot_sub = rospy.Subscriber("/vision/snapshot", Image, self.snapshot_callback, queue_size=1, buff_size=2**24)
         
         self.frame_lock = threading.Lock()
         self.current_frame = None
+        self.snapshot_frame = None
         self.current_frame_id = 0
         self.last_processed_id = -1
         
@@ -73,6 +75,7 @@ class YOLONode:
         # 0 = 冻结 (Freeze)
         # 1 = 暂停 (Pause, 显示原图)
         # 2 = 运行 (Run, 启用驱动逻辑)
+        # 3 = 快照 (Snapshot, 处理单帧)
         self.mode = 2
         
         # 标记是否由 ROS 触发 (用于区分手动调试和自动运行)
@@ -195,6 +198,14 @@ class YOLONode:
             if len(parts) > 1:
                 model_name = parts[1]
                 self._start_model_by_name(model_name, is_ros=True)
+                self.mode = 2 # Ensure Run mode
+        elif action == "snapshot":
+            if len(parts) > 1:
+                model_name = parts[1]
+                self._start_model_by_name(model_name, is_ros=True)
+                self.mode = 3 # Snapshot mode
+                # self.snapshot_frame = None # REMOVED: Do not clear snapshot here to avoid race condition
+                rospy.loginfo(f"[YOLO Driver] Snapshot mode armed for {model_name}")
         elif action == "stop":
             self._stop_active_model()
             rospy.loginfo("[YOLO Driver] Stopped")
@@ -207,6 +218,14 @@ class YOLONode:
                 self.current_frame = img
                 self.current_frame_id += 1
 
+    def snapshot_callback(self, msg):
+        """接收快照图像回调"""
+        img = ImageProcessor.imgmsg_to_cv2(msg)
+        if img is not None:
+            with self.frame_lock:
+                self.snapshot_frame = img
+                rospy.loginfo("[YOLO Driver] Snapshot received")
+
     def run(self):
         """主循环：处理图像、运行推理、发布结果、显示界面。"""
         rate = rospy.Rate(30)
@@ -216,13 +235,26 @@ class YOLONode:
                 continue
 
             frame = None
-            with self.frame_lock:
-                if self.current_frame is not None and self.current_frame_id > self.last_processed_id:
-                    frame = self.current_frame.copy()
-                    self.last_processed_id = self.current_frame_id
+            
+            # Snapshot Mode Logic
+            if self.mode == 3:
+                with self.frame_lock:
+                    if self.snapshot_frame is not None:
+                        frame = self.snapshot_frame.copy()
+                        self.snapshot_frame = None # Clear after taking
+                    else:
+                        # Waiting for snapshot
+                        rate.sleep()
+                        continue
+            else:
+                # Normal Run Mode
+                with self.frame_lock:
+                    if self.current_frame is not None and self.current_frame_id > self.last_processed_id:
+                        frame = self.current_frame.copy()
+                        self.last_processed_id = self.current_frame_id
             
             # 性能优化：如果无头模式且无活跃模型，跳过图像处理
-            if not self.use_gui and not (self.mode == 2 and self.active_model):
+            if not self.use_gui and not (self.active_model):
                 rate.sleep()
                 continue
 
@@ -233,7 +265,7 @@ class YOLONode:
                 # 如果有活跃模型且在运行模式，则执行推理
                 # 使用局部引用避免与回调发生竞争条件
                 current_model = self.active_model
-                if self.mode == 2 and current_model:
+                if current_model:
                     t_start = time.time()
                     
                     # 特殊处理 Task 类 (GarbageTask, FallenVehicleTask)
@@ -267,77 +299,37 @@ class YOLONode:
                         inference_time = timing_dict.get('total', 0)
                         
                         # 发布结果
-                        if len(boxes) > 0:
-                            res_data = {
-                                "model": self.active_model_name,
-                                "boxes": [b.tolist() for b in boxes] if hasattr(boxes, 'tolist') else boxes,
-                                "scores": [float(s) for s in scores] if hasattr(scores, 'tolist') else scores,
-                                "class_ids": [int(c) for c in class_ids] if hasattr(class_ids, 'tolist') else class_ids,
-                                "timing": timing_dict
-                            }
-                            self.driver_res_pub.publish(json.dumps(res_data))
-                            
-                            if config.PRINT_TIMING_INFO:
-                                print(f"[\033[35mYOLO Driver\033[0m] {self.active_model_name} timing: {json.dumps(timing_dict)} (ms)")
+                        # 在 Snapshot 模式下，即使没有检测到物体也可能需要发布一个空结果来结束等待？
+                        # 目前逻辑是只发布有结果的。对于 Snapshot，最好总是发布结果。
+                        
+                        # 确保数据可序列化
+                        s_boxes = boxes.tolist() if hasattr(boxes, 'tolist') else boxes
+                        s_scores = scores.tolist() if hasattr(scores, 'tolist') else scores
+                        s_class_ids = class_ids.tolist() if hasattr(class_ids, 'tolist') else class_ids
+
+                        result_data = {
+                            "model": self.active_model_name,
+                            "class_ids": s_class_ids,
+                            "scores": s_scores,
+                            "boxes": s_boxes,
+                            "timing": timing_dict,
+                            "timestamp": time.time()
+                        }
+                        self.driver_res_pub.publish(json.dumps(result_data))
                         
                         # 仅在需要显示或保存图片时进行绘制
-                        need_draw = self.use_gui or (config.SAVE_RESULT_IMAGES and self.is_ros_triggered and len(boxes) > 0)
+                        need_draw = self.use_gui or (config.SAVE_RESULT_IMAGES and self.is_ros_triggered)
                         
                         if need_draw:
-                            # 可视化绘制
-                            for i, box in enumerate(boxes):
-                                class_id = int(class_ids[i])
-                                score = float(scores[i])
-                                
-                                # 默认颜色
-                                color = (0, 255, 0)
-                                
-                                # 针对娃娃/人物的特殊逻辑
-                                if self.active_model_name == "doll":
-                                    # 假设有 class_names 属性
-                                    if hasattr(current_model, "class_names") and 0 <= class_id < len(current_model.class_names):
-                                        class_name = current_model.class_names[class_id]
-                                        # 逻辑: 社区人员 vs 非社区人员
-                                        # 假设 'bad' 前缀表示非社区人员 (红色)，其他为社区人员 (绿色)
-                                        if class_name.startswith("bad"):
-                                            color = (0, 0, 255) # 红色
-                                        else:
-                                            color = (0, 255, 0) # 绿色
-                                    else:
-                                        # 如果没有 class_names，默认绿色
-                                        color = (0, 255, 0)
-                                
-                                cv2.rectangle(
-                                    display_img,
-                                    (int(box[0]), int(box[1])),
-                                    (int(box[2]), int(box[3])),
-                                    color,
-                                    3, # 粗线条
-                                )
-                                
-                                if hasattr(current_model, "class_names") and 0 <= class_id < len(current_model.class_names):
-                                    class_name = current_model.class_names[class_id]
-                                else:
-                                    class_name = str(class_id)
-                                label = f"{class_name}: {score:.2f}"
-                                
-                                # 更大的字体
-                                cv2.putText(
-                                    display_img,
-                                    label,
-                                    (int(box[0]), int(box[1] - 10)),
-                                    cv2.FONT_HERSHEY_SIMPLEX,
-                                    1.0, # 字体缩放
-                                    color,
-                                    2,
-                                )
-
+                            display_img = ImageProcessor.draw_detections(frame, boxes, scores, class_ids, current_model.class_names)
+                            
                             # 保存最佳结果图片 (仅在 ROS 触发时)
-                            if config.SAVE_RESULT_IMAGES and self.is_ros_triggered and len(boxes) > 0:
+                            if config.SAVE_RESULT_IMAGES and self.is_ros_triggered:
                                 # 计算当前帧得分 (例如最大置信度)
                                 current_score = max(scores) if len(scores) > 0 else 0
                                 
-                                if current_score > self.best_score:
+                                # Snapshot 模式下总是保存 (因为只有一帧)
+                                if self.mode == 3 or current_score > self.best_score:
                                     self.best_score = current_score
                                     try:
                                         if not os.path.exists(config.SAVE_RESULT_DIR):
@@ -347,8 +339,15 @@ class YOLONode:
                                         filename = f"yolo_{self.active_model_name}_{self.task_session_id}_best.jpg"
                                         filepath = os.path.join(config.SAVE_RESULT_DIR, filename)
                                         cv2.imwrite(filepath, display_img)
+                                        rospy.loginfo(f"Saved result image: {filepath}")
                                     except Exception as e:
                                         rospy.logwarn(f"Failed to save image: {e}")
+                
+                # 如果是 Snapshot 模式，处理完一帧后自动停止或重置
+                if self.mode == 3:
+                    rospy.loginfo("[YOLO Driver] Snapshot processed. Returning to Idle.")
+                    self.mode = 0 # Freeze/Idle
+                    self._stop_active_model()
                 
                 # 计算 FPS
                 self.fps_frame_count += 1
@@ -359,7 +358,7 @@ class YOLONode:
                 
                 if self.use_gui:
                     # 绘制信息叠加层
-                    mode_str = ["Freeze", "Pause", "Auto"][self.mode]
+                    mode_str = ["Freeze", "Pause", "Auto", "Snapshot"][self.mode]
                     model_str = self.active_model_name if self.active_model_name else "NONE"
                     info_text = f"FPS: {self.current_fps:.1f} | Latency: {inference_time:.1f}ms | {mode_str} | Model: {model_str}"
                     cv2.putText(display_img, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)

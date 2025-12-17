@@ -63,7 +63,7 @@ class NavConfig:
     """
     default_nav_timeout: float = 60.0
     default_task_timeout: float = 15.0
-    post_task_pause: float = 0.1
+    post_task_pause: float = 0.0
     startup_delay: float = 5.0
     keyboard_enabled: bool = True
 
@@ -97,7 +97,7 @@ def load_config_from_ros() -> NavConfig:
     return NavConfig(
         default_nav_timeout=rospy.get_param("~default_nav_timeout", 25.0),
         default_task_timeout=rospy.get_param("~default_task_timeout", 15.0),
-        post_task_pause=rospy.get_param("~post_task_pause", 1.0),
+        post_task_pause=rospy.get_param("~post_task_pause", 0.0),
         startup_delay=rospy.get_param("~startup_delay", 5.0),
         keyboard_enabled=rospy.get_param("~keyboard_enabled", True),
     )

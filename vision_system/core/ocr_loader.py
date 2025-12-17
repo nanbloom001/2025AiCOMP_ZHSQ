@@ -59,6 +59,7 @@ class OCRModel:
         
         texts = []
         boxes = []
+        scores = []
         
         if result_list and result_list[0] is not None:
             result_item = result_list[0]
@@ -74,6 +75,7 @@ class OCRModel:
                          original_poly = (np.array(poly) / scale).astype(np.int32)
                          boxes.append(original_poly)
                          texts.append(text)
+                         scores.append(float(score))
                          
             # Handle list format
             elif isinstance(result_item, list):
@@ -86,6 +88,7 @@ class OCRModel:
                             original_box = (poly / scale).astype(np.int32)
                             boxes.append(original_box)
                             texts.append(text)
+                            scores.append(float(score))
                     except Exception as e:
                         rospy.logwarn(f"OCR parse error: {e}")
         
@@ -96,7 +99,7 @@ class OCRModel:
             "post": round((t3-t2)*1000, 2),
             "total": round((t3-t0)*1000, 2)
         }
-        return boxes, texts, timing
+        return texts, boxes, scores, timing
 
 class OCRLoader:
     def __init__(self, config):

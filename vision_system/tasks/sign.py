@@ -21,10 +21,24 @@ class SignTask:
         self.active = True
         self.done_callback_func = callback_func
         
-        rospy.loginfo("[SignTask] Started. Requesting voice playback: stop.WAV")
+        rospy.loginfo("[SignTask] Started. Returning DONE immediately.")
+        
+        # 1. 立即结束任务，让机器人继续移动
+        if self.done_callback_func:
+            self.done_callback_func("done_sign success")
+            self.done_callback_func = None
+            
+        # 2. 启动后台线程进行延时播报
+        threading.Thread(target=self.delayed_voice_task).start()
+        
+        self.active = False
+
+    def delayed_voice_task(self):
+        """后台延时播报"""
+        rospy.loginfo("[SignTask] Waiting 1.0s before voice...")
+        time.sleep(1.0)
         
         # 构造指令数据
-        # 对应 voice_node.py -> dispatch_task -> task="system" -> voice_wav_only.py -> task_system("stop")
         cmd = {
             "action": "dispatch",
             "task": "system",
@@ -33,13 +47,7 @@ class SignTask:
         
         # 发布语音指令
         self.voice_pub.publish(json.dumps(cmd))
-        
-        # 立即结束任务，不等待播放完成
-        rospy.loginfo("[SignTask] Voice command sent. Finishing task immediately.")
-        if self.done_callback_func:
-            self.done_callback_func("done_sign success")
-        
-        self.active = False
+        rospy.loginfo("[SignTask] Voice command sent (stop.WAV).")
 
     def stop(self):
         """任务强制停止"""

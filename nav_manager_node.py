@@ -305,7 +305,7 @@ class NavigationManager:
                         break
                     
                     rospy.loginfo("Task '%s' succeeded." % task_item.type)
-                    rospy.sleep(0.1) # 任务间短暂间隔 0.5 --> 0.1
+                    # rospy.sleep(0.1) # 任务间短暂间隔 0.5 --> 0.1 -> 0.0
 
                 rospy.sleep(self.cfg.post_task_pause)
                 self.state.current_goal_index += 1

@@ -75,17 +75,54 @@
 #   base_local_planner:指定用于move_base的局部规划器插件名称.
 #   base_global_planner:指定用于move_base的全局规划器插件名称.
 
-shutdown_costmaps: true
-controller_frequency: 5.0
-controller_patience: 3.0
-planner_frequency: 5.0
-planner_patience: 5.0
-oscillation_timeout: 8.0
+# shutdown_costmaps: true
+# controller_frequency: 5.0
+# controller_patience: 3.0
+# planner_frequency: 5.0
+# planner_patience: 5.0
+# oscillation_timeout: 8.0
+# oscillation_distance: 0.3
+# # base_local_planner: "teb_local_planner/TebLocalPlannerROS"
+# base_local_planner: "dwa_local_planner/DWAPlannerROS"
+# base_global_planner: "global_planner/GlobalPlanner"
+
+# # === 下面这两行是所有量产项目的必备补丁 ===
+# conservative_reset_dist: 0.0     # 关闭“到达目标后清 3m 以外障碍物”这个巨坑功能
+# clearing_radius: 0.0             # 部分 move_base fork 用的同名参数
+
+
+
+# =====================================================================
+# =========== Optimized move_base Configuration v4.1 ============
+# Goal: Robust recovery, logical behavior, less sensitive to obstacles.
+# =====================================================================
+
+# [优化] 提高控制器频率以获得更快的响应
+controller_frequency: 15
+controller_patience: 5.0
+
+# 全局规划频率不需要太高
+planner_frequency: 2.0
+planner_patience: 10.0
+
+# [优化] 延长振荡超时，给DWA更多时间解决问题，避免过早放弃
+oscillation_timeout: 15.0
 oscillation_distance: 0.3
-# base_local_planner: "teb_local_planner/TebLocalPlannerROS"
+
 base_local_planner: "dwa_local_planner/DWAPlannerROS"
 base_global_planner: "global_planner/GlobalPlanner"
 
-# === 下面这两行是所有量产项目的必备补丁 ===
-conservative_reset_dist: 0.0     # 关闭“到达目标后清 3m 以外障碍物”这个巨坑功能
-clearing_radius: 0.0             # 部分 move_base fork 用的同名参数
+# ==================== Recovery Behaviors (Corrected & Optimized) ====================
+recovery_behavior_enabled: true
+# [优化] clearing_rotation_allowed 建议设为 false，因为我们自定义了旋转行为。
+# 开启它会在我们的行为链执行前，额外增加一次360度的旋转，通常是不必要的。
+clearing_rotation_allowed: false
+
+recovery_behaviors:
+  # 优先级 1: 清除局部代价地图。这是最快、成本最低的尝试。
+  - name: 'conservative_reset'
+    type: 'clear_costmap_recovery/ClearCostmapRecovery'
+  # 优先级 3: 再次清除局部代价地图。
+  # 在旋转之后，机器人可能看到了新的空间，但旧的障碍物信息可能还残留在地图上，所以再次清除。
+  - name: 'aggressive_reset'
+    type: 'clear_costmap_recovery/ClearCostmapRecovery'

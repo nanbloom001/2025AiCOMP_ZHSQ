@@ -1,0 +1,5 @@
+Navigation Log Started at 20251218_032237
+==================================================
+[03:22:48.239] NAV Goal 1: Time=0m 5.44s Status=Success
+[03:23:08.130] TASK Goal 1 [traffic_light]: Time=0m 19.89s Result=TIMEOUT/FAILED
+[03:23:09.144] TOTAL PROCESS TIME: 0m 26.35s

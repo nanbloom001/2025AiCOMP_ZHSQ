@@ -50,9 +50,11 @@ class OCRNode:
         self.driver_res_pub = rospy.Publisher("/vision/driver/ocr/result", String, queue_size=1)
         
         self.img_sub = rospy.Subscriber(self.image_topic, Image, self.image_callback, queue_size=1, buff_size=2**24)
+        self.snapshot_sub = rospy.Subscriber("/vision/snapshot", Image, self.snapshot_callback, queue_size=1, buff_size=2**24)
         
         self.frame_lock = threading.Lock()
         self.current_frame = None
+        self.snapshot_frame = None
         self.current_frame_id = 0
         self.last_processed_id = -1
         
@@ -60,6 +62,7 @@ class OCRNode:
         # 0 = 冻结 (Freeze, 停止更新)
         # 1 = 暂停 (Pause, 显示原图但不处理)
         # 2 = 运行 (Run, 启用驱动逻辑)
+        # 3 = 快照 (Snapshot)
         self.mode = 2
         
         # 驱动启用状态: 由 ROS 话题或手动控制台控制
@@ -153,9 +156,17 @@ class OCRNode:
             if self.ensure_model_loaded():
                 self.driver_enabled = True
                 self.is_ros_triggered = True
+                self.mode = 2
                 self.best_score = -1
                 self.task_session_id = int(time.time() * 1000)
                 rospy.loginfo("[OCR Driver] Enabled via ROS")
+        elif cmd == "snapshot":
+            if self.ensure_model_loaded():
+                self.driver_enabled = True
+                self.is_ros_triggered = True
+                self.mode = 3
+                # self.snapshot_frame = None # REMOVED: Do not clear snapshot here to avoid race condition
+                rospy.loginfo("[OCR Driver] Snapshot mode armed")
         elif cmd == "stop":
             self.driver_enabled = False
             rospy.loginfo("[OCR Driver] Disabled via ROS")
@@ -168,22 +179,41 @@ class OCRNode:
                 self.current_frame = img
                 self.current_frame_id += 1
 
+    def snapshot_callback(self, msg):
+        """接收快照图像回调"""
+        img = ImageProcessor.imgmsg_to_cv2(msg)
+        if img is not None:
+            with self.frame_lock:
+                self.snapshot_frame = img
+                rospy.loginfo("[OCR Driver] Snapshot received")
+
     def run(self):
         """主循环：处理图像、运行推理、发布结果、显示界面。"""
-        rate = rospy.Rate(30)
+        rate = rospy.Rate(10) # OCR 不需要太高帧率
         while not rospy.is_shutdown():
             if self.mode == 0:
                 rate.sleep()
                 continue
 
             frame = None
-            with self.frame_lock:
-                if self.current_frame is not None and self.current_frame_id > self.last_processed_id:
-                    frame = self.current_frame.copy()
-                    self.last_processed_id = self.current_frame_id
             
-            # 性能优化：如果无头模式且未启用驱动，跳过图像处理
-            if not self.use_gui and not self.driver_enabled:
+            # Snapshot Mode
+            if self.mode == 3:
+                with self.frame_lock:
+                    if self.snapshot_frame is not None:
+                        frame = self.snapshot_frame.copy()
+                        self.snapshot_frame = None
+                    else:
+                        rate.sleep()
+                        continue
+            else:
+                # Normal Mode
+                with self.frame_lock:
+                    if self.current_frame is not None and self.current_frame_id > self.last_processed_id:
+                        frame = self.current_frame.copy()
+                        self.last_processed_id = self.current_frame_id
+            
+            if not self.use_gui and not (self.driver_enabled):
                 rate.sleep()
                 continue
 
@@ -191,65 +221,58 @@ class OCRNode:
                 display_img = frame.copy()
                 inference_time = 0.0
                 
-                # 如果启用驱动且在运行模式，则执行推理
-                if self.mode == 2 and self.driver_enabled:
-                    if not self.ensure_model_loaded():
-                        rate.sleep()
-                        continue
+                if self.driver_enabled:
                     t_start = time.time()
-                    boxes, texts, timing = self.model.infer(frame)
-                    inference_time = timing.get('total', 0)
+                    
+                    # 执行 OCR 推理
+                    # infer 返回: (texts, boxes, scores, timing_dict)
+                    texts, boxes, scores, timing_dict = self.model.infer(frame)
+                    inference_time = timing_dict.get('total', 0)
                     
                     # 发布结果
-                    if texts:
-                        # 确保 boxes 可 JSON 序列化 (numpy array -> list)
+                    # Snapshot 模式下总是发布结果
+                    if len(texts) > 0 or self.mode == 3:
+                        # 确保数据可序列化 (numpy -> list)
                         serializable_boxes = [b.tolist() if hasattr(b, 'tolist') else b for b in boxes]
-                        res_data = {
+                        
+                        result_data = {
                             "texts": texts,
                             "boxes": serializable_boxes,
-                            "timing": timing,
+                            "scores": scores,
+                            "timing": timing_dict,
                             "width": frame.shape[1],
-                            "height": frame.shape[0]
+                            "height": frame.shape[0],
+                            "timestamp": time.time()
                         }
-                        self.driver_res_pub.publish(json.dumps(res_data))
-                        
-                        if config.PRINT_TIMING_INFO:
-                            print(f"[\033[35mOCR Driver\033[0m] timing: {json.dumps(timing)}")
-
-                    # 仅在需要显示或保存图片时进行绘制
-                    need_draw = self.use_gui or (config.SAVE_RESULT_IMAGES and self.is_ros_triggered and len(boxes) > 0)
+                        self.driver_res_pub.publish(json.dumps(result_data))
                     
-                    if need_draw:
-                        # 可视化绘制
-                        for i, box in enumerate(boxes):
-                            cv2.polylines(display_img, [box], True, (0, 255, 0), 2)
-                            if i < len(texts):
-                                text = texts[i]
-                                text_x = min([p[0] for p in box])
-                                text_y = max([p[1] for p in box])
-                                text_position = (text_x, text_y + 5)
-                                # 使用 PIL 绘制中文文本 (OpenCV 不支持中文)
-                                display_img = draw_text_with_pil(display_img, text, text_position, font_size=40)
-
-                        # 保存最佳结果图片 (仅在 ROS 触发时)
-                        if config.SAVE_RESULT_IMAGES and self.is_ros_triggered and len(boxes) > 0:
-                            # 评分标准: 检测到的文本块数量
-                            current_score = len(boxes)
-                            
-                            if current_score > self.best_score:
+                    # 绘制结果
+                    if self.use_gui or (config.SAVE_RESULT_IMAGES and self.is_ros_triggered):
+                        display_img = ImageProcessor.draw_ocr_results(frame, texts, boxes, scores)
+                        
+                        # 保存最佳结果图片
+                        if config.SAVE_RESULT_IMAGES and self.is_ros_triggered:
+                            current_score = len(texts)
+                            if self.mode == 3 or current_score > self.best_score:
                                 self.best_score = current_score
                                 try:
                                     if not os.path.exists(config.SAVE_RESULT_DIR):
                                         os.makedirs(config.SAVE_RESULT_DIR)
                                     
-                                    # 保存/覆盖最佳图片
                                     filename = f"ocr_{self.task_session_id}_best.jpg"
                                     filepath = os.path.join(config.SAVE_RESULT_DIR, filename)
                                     cv2.imwrite(filepath, display_img)
+                                    rospy.loginfo(f"Saved result image: {filepath}")
                                 except Exception as e:
                                     rospy.logwarn(f"Failed to save image: {e}")
                 
-                # 计算 FPS
+                # Snapshot 自动复位
+                if self.mode == 3:
+                    rospy.loginfo("[OCR Driver] Snapshot processed. Returning to Idle.")
+                    self.mode = 0
+                    self.driver_enabled = False
+
+                # FPS 计算
                 self.fps_frame_count += 1
                 if time.time() - self.fps_start_time > 1.0:
                     self.current_fps = self.fps_frame_count / (time.time() - self.fps_start_time)
@@ -257,12 +280,11 @@ class OCRNode:
                     self.fps_start_time = time.time()
                 
                 if self.use_gui:
-                    # 绘制信息叠加层
-                    mode_str = ["Freeze", "Pause", "Auto"][self.mode]
-                    status_str = "RUNNING" if self.driver_enabled else "IDLE"
-                    info_text = f"FPS: {self.current_fps:.1f} | Latency: {inference_time:.1f}ms | {mode_str} | {status_str}"
+                    mode_str = ["Freeze", "Pause", "Auto", "Snapshot"][self.mode]
+                    status_str = "RUNNING" if self.driver_enabled else "STOPPED"
+                    info_text = f"FPS: {self.current_fps:.1f} | {mode_str} | {status_str}"
                     cv2.putText(display_img, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-
+                    
                     cv2.imshow("OCR View", display_img)
                     key = cv2.waitKey(1) & 0xFF
                     if key == ord('q'):

@@ -2,8 +2,46 @@ import cv2
 import numpy as np
 import rospy
 from sensor_msgs.msg import Image
+from .utils import draw_text_with_pil
 
 class ImageProcessor:
+    @staticmethod
+    def draw_detections(image, boxes, scores, class_ids, class_names):
+        """绘制检测结果"""
+        img = image.copy()
+        for i, box in enumerate(boxes):
+            x1, y1, x2, y2 = map(int, box)
+            score = scores[i]
+            class_id = int(class_ids[i])
+            
+            label = f"{class_names[class_id]}: {score:.2f}" if class_names and class_id < len(class_names) else f"ID {class_id}: {score:.2f}"
+            
+            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        return img
+
+    @staticmethod
+    def draw_ocr_results(image, texts, boxes, scores):
+        """绘制 OCR 结果"""
+        img = image.copy()
+        for i, box in enumerate(boxes):
+            # box is a list of points [[x,y], [x,y], ...] or numpy array
+            pts = np.array(box, np.int32)
+            pts = pts.reshape((-1, 1, 2))
+            cv2.polylines(img, [pts], True, (0, 255, 0), 2)
+            
+            if i < len(texts):
+                text = texts[i]
+                score = scores[i] if i < len(scores) else 0.0
+                
+                # Find top-left corner for text
+                x_min = np.min(pts[:, :, 0])
+                y_min = np.min(pts[:, :, 1])
+                
+                # Draw text using PIL for Chinese support
+                img = draw_text_with_pil(img, f"{text} ({score:.2f})", (int(x_min), int(y_min) - 20))
+        return img
+
     @staticmethod
     def imgmsg_to_cv2(img_msg):
         """ 纯 Python 实现的图像转换，无视环境冲突 """

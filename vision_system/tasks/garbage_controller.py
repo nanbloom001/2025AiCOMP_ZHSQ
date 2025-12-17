@@ -2,128 +2,116 @@ import rospy
 import json
 import time
 import threading
-import sys
-import os
+import queue
 from std_msgs.msg import String
-
-# Try to import config to get PRINT_TIMING_INFO
-try:
-    import config
-except ImportError:
-    # Add parent dir to path if running from tasks subdir
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    try:
-        import config
-    except ImportError:
-        config = None
+from sensor_msgs.msg import Image
+import config
 
 class GarbageController:
     """
-    垃圾分类任务控制器 (Master Side)。
-    负责发送指令给 YOLO Node 启动垃圾识别任务。
-    收到结果后，调用 Voice Node 播报，并延迟返回 Done。
+    垃圾分类任务控制器 (Snapshot Mode + Background Queue).
+    流程：截图 -> 返回Done -> 入队 -> 后台(YOLO检测+分类 -> 语音播报)
     """
     def __init__(self):
         self.active = False
+        # Publishers
         self.driver_pub = rospy.Publisher("/vision/driver/yolo/cmd", String, queue_size=1)
         self.voice_pub = rospy.Publisher("/vision/driver/voice/cmd", String, queue_size=1)
-        self.driver_sub = None
-        self.voice_status_sub = None
-        self.done_callback = None
-        self.receipt_event = threading.Event()
+        self.snapshot_pub = rospy.Publisher("/vision/snapshot", Image, queue_size=1)
+        
+        # Subscribers
+        self.driver_sub = rospy.Subscriber("/vision/driver/yolo/result", String, self.on_driver_data)
+        self.voice_status_sub = rospy.Subscriber("/vision/driver/voice/status", String, self.voice_status_cb)
+        self.cam_sub = None
+        
+        self.image_topic = config.DEFAULT_CONFIG["image_topic"]
+        
+        # Background Queue
+        self.task_queue = queue.Queue()
+        self.worker_thread = threading.Thread(target=self.worker_loop)
+        self.worker_thread.daemon = True
+        self.worker_thread.start()
+        
+        # Sync Events
+        self.yolo_event = threading.Event()
+        self.voice_event = threading.Event()
+        self.current_job_data = {}
 
     def start(self, done_callback, status_callback, seq_id=0):
-        """启动任务"""
+        """任务开始"""
         self.active = True
         self.done_callback = done_callback
-        self.receipt_event.clear()
-        self.start_time = time.time()
-        self.yolo_time = 0
+        self.current_seq_id = seq_id
         
-        # 订阅结果话题
-        if self.driver_sub:
-            self.driver_sub.unregister()
-        self.driver_sub = rospy.Subscriber("/vision/driver/yolo/result", String, self.result_cb)
+        rospy.loginfo("[GarbageController] Waiting for camera frame...")
+        self.cam_sub = rospy.Subscriber(self.image_topic, Image, self.on_camera_frame)
+
+    def on_camera_frame(self, msg):
+        if not self.active: return
         
-        # 订阅语音回执
-        if self.voice_status_sub:
-            self.voice_status_sub.unregister()
-        self.voice_status_sub = rospy.Subscriber("/vision/driver/voice/status", String, self.voice_status_cb)
+        if self.cam_sub:
+            self.cam_sub.unregister()
+            self.cam_sub = None
+            
+        rospy.loginfo("[GarbageController] Frame captured.")
+        print("\n[Foreground] Garbage Task Finished. Snapshot taken.\n")
         
-        # 发送启动指令
-        rospy.loginfo("[GarbageController] Sending start command...")
-        self.driver_pub.publish("start garbage")
+        if self.done_callback:
+            self.done_callback("done_garbage snapshot_taken")
+            self.done_callback = None
+            
+        self.task_queue.put((msg, self.current_seq_id))
 
     def stop(self):
-        """停止任务"""
         self.active = False
-        if self.driver_sub:
-            self.driver_sub.unregister()
-            self.driver_sub = None
-        if self.voice_status_sub:
-            self.voice_status_sub.unregister()
-            self.voice_status_sub = None
-        self.driver_pub.publish("stop")
+        if self.cam_sub:
+            self.cam_sub.unregister()
+            self.cam_sub = None
+
+    def worker_loop(self):
+        while not rospy.is_shutdown():
+            try:
+                item = self.task_queue.get(timeout=2.0)
+                frame_msg, seq_id = item
+            except queue.Empty:
+                continue
+                
+            rospy.loginfo(f"[GarbageController] Background processing started for seq {seq_id}.")
+            
+            self.yolo_event.clear()
+            self.voice_event.clear()
+            
+            # Publish Snapshot & Trigger YOLO
+            self.snapshot_pub.publish(frame_msg)
+            rospy.sleep(0.2)
+            self.driver_pub.publish("snapshot garbage")
+            
+            # Wait for YOLO (GarbageTask in YOLO node does the processing and sends voice cmd)
+            if self.yolo_event.wait(timeout=15.0):
+                rospy.loginfo("[GarbageController] YOLO processing finished.")
+            else:
+                rospy.logwarn("[GarbageController] YOLO timeout.")
+                
+            # Wait for Voice Receipt (GarbageTask sends the voice command)
+            if self.voice_event.wait(timeout=10.0):
+                rospy.loginfo("[GarbageController] Voice receipt confirmed.")
+            else:
+                rospy.logwarn("[GarbageController] Voice receipt timeout.")
+                
+            print("\n[Background] Garbage Task Finished. Voice done.\n")
+            self.task_queue.task_done()
+
+    def on_driver_data(self, msg):
+        data = msg.data
+        # GarbageTask returns "done:..." or "voice:..."
+        if data.startswith("voice:") or data.startswith("done:"):
+            self.yolo_event.set()
 
     def voice_status_cb(self, msg):
         try:
             data = json.loads(msg.data)
-            # 确认收到 trash_bin 任务的回执
             if data.get("status") == "received" and data.get("original_task") == "trash_bin":
-                self.receipt_event.set()
+                self.voice_event.set()
         except:
             pass
-
-    def result_cb(self, msg):
-        if not self.active: return
-        
-        self.yolo_time = time.time()
-        data = msg.data
-        # 兼容 "voice:" (旧) 和 "done:" (新) 前缀
-        if data.startswith("voice:") or data.startswith("done:"):
-            # 提取文本
-            voice_text = data.replace("voice:", "").replace("done:", "").strip()
-            rospy.loginfo(f"[GarbageController] Result received: {voice_text}")
-            
-            # 启动异步线程等待回执，然后结束任务
-            threading.Thread(target=self.wait_for_receipt_and_finish, args=(data,)).start()
-            
-            # 立即停止 YOLO 识别，防止重复触发
-            # 注意：不要调用 self.stop() 因为会注销 voice_status_sub，导致收不到回执
-            # 只发送停止指令
-            self.driver_pub.publish("stop")
-            
-            # 安全注销 driver_sub
-            if self.driver_sub:
-                try:
-                    self.driver_sub.unregister()
-                except Exception as e:
-                    rospy.logwarn(f"Failed to unregister driver_sub: {e}")
-                self.driver_sub = None
-
-    def wait_for_receipt_and_finish(self, result_data):
-        rospy.loginfo("[GarbageController] Waiting for voice receipt...")
-        # 等待回执，超时 2 秒
-        if self.receipt_event.wait(timeout=2.0):
-            rospy.loginfo("[GarbageController] Receipt confirmed.")
-        else:
-            rospy.logwarn("[GarbageController] Receipt timeout, proceeding anyway.")
-        
-        voice_end_time = time.time()
-        wait_yolo = round(self.yolo_time - self.start_time, 3)
-        wait_voice = round(voice_end_time - self.yolo_time, 3)
-        
-        ctrl_timing = {'wait_yolo': wait_yolo, 'wait_voice': wait_voice}
-        
-        if config and getattr(config, 'PRINT_TIMING_INFO', False):
-            print(f"[\033[36mGarbageController Detail\033[0m] {json.dumps(ctrl_timing)}")
-        
-        # Append controller timing to result
-        final_result = f"{result_data} | ctrl_timing={json.dumps(ctrl_timing)}"
-        
-        if self.done_callback:
-            self.done_callback(final_result)
-        
-        # 最后彻底停止
-        self.stop()
 
