@@ -40,6 +40,7 @@ from tasks.traffic_light import TrafficLightTask
 from tasks.doll import DollTask
 from tasks.garbage_controller import GarbageController
 from tasks.fallen_vehicle_controller import FallenVehicleController
+from tasks.sign import SignTask
 
 # Absolute paths to node scripts
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -162,6 +163,7 @@ class VisionMasterNode:
             "doll": DollTask(),
             "garbage": GarbageController(), 
             "fallen_vehicle": FallenVehicleController(),
+            "sign": SignTask(),
         }
         self.active_task_name = None
         
@@ -209,6 +211,16 @@ class VisionMasterNode:
                     try:
                         parts = line.split()
                         if not parts: continue
+
+                        # Support typing task name directly
+                        if parts[0] in self.logic_tasks:
+                            task_name = parts[0]
+                            seq_id = int(parts[1]) if len(parts) > 1 else 0
+                            self.trigger_task(task_name, seq_id)
+                            rospy.loginfo(f">>> Manual: Triggered {task_name} seq={seq_id}")
+                            print(f"[Simulated ROS Cmd] /vision/cmd -> \"trigger {task_name} {seq_id}\"")
+                            continue
+
                         idx = int(parts[0])
                         seq_id = int(parts[1]) if len(parts) > 1 else 0
 
@@ -225,7 +237,7 @@ class VisionMasterNode:
                         else:
                             print("Invalid selection")
                     except ValueError:
-                        print("Please enter a number (e.g. '1' or '1 1')")
+                        print("Please enter a number (e.g. '1' or '1 1') or valid task name")
                 except Exception:
                     break
         

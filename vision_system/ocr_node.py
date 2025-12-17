@@ -182,6 +182,11 @@ class OCRNode:
                     frame = self.current_frame.copy()
                     self.last_processed_id = self.current_frame_id
             
+            # 性能优化：如果无头模式且未启用驱动，跳过图像处理
+            if not self.use_gui and not self.driver_enabled:
+                rate.sleep()
+                continue
+
             if frame is not None:
                 display_img = frame.copy()
                 inference_time = 0.0
@@ -202,41 +207,47 @@ class OCRNode:
                         res_data = {
                             "texts": texts,
                             "boxes": serializable_boxes,
-                            "timing": timing
+                            "timing": timing,
+                            "width": frame.shape[1],
+                            "height": frame.shape[0]
                         }
                         self.driver_res_pub.publish(json.dumps(res_data))
                         
                         if config.PRINT_TIMING_INFO:
                             print(f"[\033[35mOCR Driver\033[0m] timing: {json.dumps(timing)}")
 
-                    # 可视化绘制
-                    for i, box in enumerate(boxes):
-                        cv2.polylines(display_img, [box], True, (0, 255, 0), 2)
-                        if i < len(texts):
-                            text = texts[i]
-                            text_x = min([p[0] for p in box])
-                            text_y = max([p[1] for p in box])
-                            text_position = (text_x, text_y + 5)
-                            # 使用 PIL 绘制中文文本 (OpenCV 不支持中文)
-                            display_img = draw_text_with_pil(display_img, text, text_position, font_size=40)
+                    # 仅在需要显示或保存图片时进行绘制
+                    need_draw = self.use_gui or (config.SAVE_RESULT_IMAGES and self.is_ros_triggered and len(boxes) > 0)
+                    
+                    if need_draw:
+                        # 可视化绘制
+                        for i, box in enumerate(boxes):
+                            cv2.polylines(display_img, [box], True, (0, 255, 0), 2)
+                            if i < len(texts):
+                                text = texts[i]
+                                text_x = min([p[0] for p in box])
+                                text_y = max([p[1] for p in box])
+                                text_position = (text_x, text_y + 5)
+                                # 使用 PIL 绘制中文文本 (OpenCV 不支持中文)
+                                display_img = draw_text_with_pil(display_img, text, text_position, font_size=40)
 
-                    # 保存最佳结果图片 (仅在 ROS 触发时)
-                    if config.SAVE_RESULT_IMAGES and self.is_ros_triggered and len(boxes) > 0:
-                        # 评分标准: 检测到的文本块数量
-                        current_score = len(boxes)
-                        
-                        if current_score > self.best_score:
-                            self.best_score = current_score
-                            try:
-                                if not os.path.exists(config.SAVE_RESULT_DIR):
-                                    os.makedirs(config.SAVE_RESULT_DIR)
-                                
-                                # 保存/覆盖最佳图片
-                                filename = f"ocr_{self.task_session_id}_best.jpg"
-                                filepath = os.path.join(config.SAVE_RESULT_DIR, filename)
-                                cv2.imwrite(filepath, display_img)
-                            except Exception as e:
-                                rospy.logwarn(f"Failed to save image: {e}")
+                        # 保存最佳结果图片 (仅在 ROS 触发时)
+                        if config.SAVE_RESULT_IMAGES and self.is_ros_triggered and len(boxes) > 0:
+                            # 评分标准: 检测到的文本块数量
+                            current_score = len(boxes)
+                            
+                            if current_score > self.best_score:
+                                self.best_score = current_score
+                                try:
+                                    if not os.path.exists(config.SAVE_RESULT_DIR):
+                                        os.makedirs(config.SAVE_RESULT_DIR)
+                                    
+                                    # 保存/覆盖最佳图片
+                                    filename = f"ocr_{self.task_session_id}_best.jpg"
+                                    filepath = os.path.join(config.SAVE_RESULT_DIR, filename)
+                                    cv2.imwrite(filepath, display_img)
+                                except Exception as e:
+                                    rospy.logwarn(f"Failed to save image: {e}")
                 
                 # 计算 FPS
                 self.fps_frame_count += 1
@@ -245,13 +256,13 @@ class OCRNode:
                     self.fps_frame_count = 0
                     self.fps_start_time = time.time()
                 
-                # 绘制信息叠加层
-                mode_str = ["Freeze", "Pause", "Auto"][self.mode]
-                status_str = "RUNNING" if self.driver_enabled else "IDLE"
-                info_text = f"FPS: {self.current_fps:.1f} | Latency: {inference_time:.1f}ms | {mode_str} | {status_str}"
-                cv2.putText(display_img, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-
                 if self.use_gui:
+                    # 绘制信息叠加层
+                    mode_str = ["Freeze", "Pause", "Auto"][self.mode]
+                    status_str = "RUNNING" if self.driver_enabled else "IDLE"
+                    info_text = f"FPS: {self.current_fps:.1f} | Latency: {inference_time:.1f}ms | {mode_str} | {status_str}"
+                    cv2.putText(display_img, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
                     cv2.imshow("OCR View", display_img)
                     key = cv2.waitKey(1) & 0xFF
                     if key == ord('q'):

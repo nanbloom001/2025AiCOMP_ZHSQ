@@ -106,7 +106,7 @@ class NavExecutor:
             elapsed = time() - start_time
             if elapsed > nav_timeout:
                 rospy.logwarn(
-                    "Navigation timeout %.1fs (limit %.1fs).", elapsed, nav_timeout
+                    "Navigation timeout %.1fs (limit %.1fs). Last state: %s", elapsed, nav_timeout, str(state_code)
                 )
                 try:
                     self.client.cancel_goal()
@@ -115,7 +115,7 @@ class NavExecutor:
                 state.executing_nav = False
                 return False
 
-            rospy.sleep(0.12)
+            rospy.sleep(0.05)
 
         try:
             self.client.cancel_goal()

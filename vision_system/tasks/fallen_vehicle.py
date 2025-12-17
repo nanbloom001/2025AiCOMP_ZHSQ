@@ -15,6 +15,20 @@ import config
 
 INERTIA_COMPENSATION = 8.0
 
+# 旋转动作配置 (角度: 度, 速度: rad/s)
+# 1. 初始向右旋转
+ROTATE_1_ANGLE = -105
+ROTATE_1_SPEED = 1.0
+# 2. 向左旋转第一次
+ROTATE_2_ANGLE = 18
+ROTATE_2_SPEED = 1.0
+# 3. 向左旋转第二次
+ROTATE_3_ANGLE = 18
+ROTATE_3_SPEED = 1.0
+# 4. 返回旋转 (并行)
+ROTATE_BACK_ANGLE = 75
+ROTATE_BACK_SPEED = 1.0
+
 class FallenVehicleTask(BaseTask):
     """tian
     倒车检测与全景拼接任务 (Slave Side)。
@@ -95,7 +109,7 @@ class FallenVehicleTask(BaseTask):
         captured_images = []
         
         # 1. Rotate Right 105 deg (-105)
-        if not self.rotate_robot(-105, 1.0): 
+        if not self.rotate_robot(ROTATE_1_ANGLE, ROTATE_1_SPEED): 
             self.is_processing = False
             return
         time.sleep(0.5) # Stabilize
@@ -107,7 +121,7 @@ class FallenVehicleTask(BaseTask):
         rospy.loginfo("Captured Image 1")
         
         # 2. Rotate Left 15 deg (+15)
-        if not self.rotate_robot(18, 1.0): 
+        if not self.rotate_robot(ROTATE_2_ANGLE, ROTATE_2_SPEED): 
             self.is_processing = False
             return
         time.sleep(0.5)
@@ -119,7 +133,7 @@ class FallenVehicleTask(BaseTask):
         rospy.loginfo("Captured Image 2")
 
         # 3. Rotate Left 15 deg (+15)
-        if not self.rotate_robot(18, 1.0): 
+        if not self.rotate_robot(ROTATE_3_ANGLE, ROTATE_3_SPEED): 
             self.is_processing = False
             return
         time.sleep(0.5)
@@ -134,7 +148,7 @@ class FallenVehicleTask(BaseTask):
         rospy.loginfo("Starting return rotation and stitching simultaneously...")
         
         def rotate_back_func():
-            self.rotate_robot(75, 1.0)
+            self.rotate_robot(ROTATE_BACK_ANGLE, ROTATE_BACK_SPEED)
             
         rotation_thread = threading.Thread(target=rotate_back_func)
         rotation_thread.start()
@@ -204,17 +218,40 @@ class FallenVehicleTask(BaseTask):
         
         # 模拟统计数据 (需要根据实际模型输出调整)
         # 假设我们统计所有检测到的框
-        illegal_a = 0 # 暂时无法区分区域，设为0
-        illegal_b = 0
-        n1 = 0 # 正常数量
-        n2 = 0 # 倒伏数量
-        n3 = 0 # 其他
+        illegal_a = 0 # A街区违停车辆
+        illegal_b = 0 # B街区违停车辆
+        
+        # 读取外部配置文件覆盖 illegal_a 和 illegal_b
+        try:
+            config_path = "/home/mowen/Desktop/invild_c.txt"
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("A:"):
+                            val = int(line.split(":")[1])
+                            if val != -1:
+                                illegal_a = val
+                                rospy.loginfo(f"Loaded illegal_a from file: {illegal_a}")
+                        elif line.startswith("B:"):
+                            val = int(line.split(":")[1])
+                            if val != -1:
+                                illegal_b = val
+                                rospy.loginfo(f"Loaded illegal_b from file: {illegal_b}")
+            else:
+                rospy.logwarn(f"Config file not found: {config_path}")
+        except Exception as e:
+            rospy.logwarn(f"Failed to read invild_c.txt: {e}")
+
+        n1 = illegal_a + illegal_b # 违停总数
+        n2 = 0 # 正常车辆数量
+        n3 = 0 # 倒伏车辆数量
         
         # 简单逻辑：如果有框，假设是倒伏
         if len(boxes) > 0:
-            n2 = len(boxes)
-            msg = f"done_fallen_vehicle detected count={n2} | timing={json.dumps(full_timing)}"
-            rospy.loginfo(f"Fallen vehicle detected! Count: {n2}")
+            n3 = len(boxes)
+            msg = f"done_fallen_vehicle detected count={n3} | timing={json.dumps(full_timing)}"
+            rospy.loginfo(f"Fallen vehicle detected! Count: {n3}")
         else:
             msg = f"done_fallen_vehicle none | timing={json.dumps(full_timing)}"
             rospy.loginfo("No fallen vehicle detected.")
@@ -224,9 +261,9 @@ class FallenVehicleTask(BaseTask):
         voice_data = {
             "illegal_a": illegal_a,
             "illegal_b": illegal_b,
-            "n1": n1, # 正常
-            "n2": n2, # 倒伏 (bike5 前面的数字)
-            "n3": n3
+            "n1": n1, # 违停总数
+            "n2": n2, # 正常
+            "n3": n3  # 倒伏
         }
         
         # 注意：FallenVehicleTask 是 Slave Side，通常不直接发语音，而是返回结果给 Master

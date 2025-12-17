@@ -73,6 +73,8 @@ class PlateTask:
             texts = data.get("texts", [])
             boxes = data.get("boxes", [])
             timing = data.get("timing", {})
+            img_w = data.get("width", 640)
+            img_h = data.get("height", 480)
             
             if not texts: return
             
@@ -97,8 +99,8 @@ class PlateTask:
                         if xs and ys:
                             cx = sum(xs) / len(xs)
                             cy = sum(ys) / len(ys)
-                            # 假设图像分辨率 640x480
-                            dist = math.hypot(cx - 320, cy - 240)
+                            # 使用动态分辨率计算中心距离
+                            dist = math.hypot(cx - img_w/2, cy - img_h/2)
                     
                     candidates.append((clean_text, dist))
             

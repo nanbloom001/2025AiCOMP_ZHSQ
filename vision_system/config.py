@@ -7,7 +7,7 @@ YOLO_MODELS_DIR = os.path.join(CURRENT_DIR, "models")
 
 DEFAULT_CONFIG = {
     "image_topic": "/camera/color/image_raw",
-    "headless": False,
+    "headless": True,
 }
 
 # --- Save Settings ---

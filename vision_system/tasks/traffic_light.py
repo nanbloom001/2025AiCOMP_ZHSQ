@@ -14,6 +14,7 @@ class TrafficLightTask:
         # 接收 YOLO 工具数据的句柄
         self.driver_sub = None 
         self.status_callback_func = None 
+        self.done_callback_func = None
         
         # Load class names for 'lights' model
         # Default fallback if model_list not provided
@@ -28,6 +29,7 @@ class TrafficLightTask:
         """任务开始"""
         self.active = True
         self.status_callback_func = status_callback
+        self.done_callback_func = done_callback
         # timing
         self.start_time = time.time()
         
@@ -81,6 +83,12 @@ class TrafficLightTask:
                 msg = f"status_traffic_light {found_status} | timing={json.dumps(timing)} | duration_ms={dur_ms}"
                 rospy.loginfo(f"[TrafficLightTask] Status: {found_status}, timing (driver): {json.dumps(timing)} (ms), duration_ms={dur_ms}")
                 self.status_callback_func(msg)
+
+            # 如果是绿灯，任务完成
+            if found_status == "green_light" and self.done_callback_func:
+                # 仅发送完成信号，不主动停止，由 Nav 节点控制停止
+                rospy.loginfo_throttle(1.0, "[TrafficLightTask] Green light detected. Sending done signal...")
+                self.done_callback_func("done_traffic_light green_light")
                     
         except json.JSONDecodeError:
             pass

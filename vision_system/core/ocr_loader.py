@@ -40,7 +40,9 @@ class OCRModel:
         
         # Logic adapted from working ocr_camera_inference.py
         h, w = image.shape[:2]
-        target_width = 640 
+        # Optimize: Reduce target_width to improve speed (480 vs 640)
+        # If detection is poor, increase this value.
+        target_width = 480 
         scale = 1.0
         
         if w > target_width:

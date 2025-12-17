@@ -57,9 +57,16 @@ class TaskHandler:
             return True
 
         if task_type == "traffic_light":
-            rospy.loginfo("Waiting traffic light -> need 'green_light' (manual skip allowed).")
+            rospy.loginfo("Waiting traffic light -> need 'green_light' (manual skip allowed). Timeout 25s.")
             green_count = 0
+            start_wait_time = time()
             while not rospy.is_shutdown() and not state.shutdown_requested:
+                # 超时保护 (25s)
+                if time() - start_wait_time > 25.0:
+                    rospy.logwarn("Traffic light wait TIMEOUT (25s). Force proceeding.")
+                    self.task_pub.publish(String("stop traffic_light"))
+                    return True # 视为放行/完成
+
                 if state.skip_requested:
                     rospy.logwarn("Skip requested during traffic_light wait.")
                     state.skip_requested = False
@@ -72,25 +79,27 @@ class TaskHandler:
                     continue
                 
                 # 检查当前状态 (由 manager.py 回调更新到 state.task_result)
-                current_status = str(state.task_result).lower() if state.task_result else "null"
+                # 注意：state.task_result 可能包含额外信息，如 "green_light | timing=..."
+                # 因此需要进行包含判断，而不是全等判断
+                raw_status = str(state.task_result).lower() if state.task_result else "null"
                 
-                if current_status == "green_light":
+                if "green_light" in raw_status:
                     green_count += 1
                     if green_count % 10 == 0:
                         rospy.loginfo("Seeing Green Light... count=%d" % green_count)
-                elif current_status == "red_light":
+                elif "red_light" in raw_status:
                     if green_count > 0: rospy.loginfo("Status changed to RED, reset count.")
                     green_count = 0
                     rospy.loginfo_throttle(0.5, "Seeing Red Light, waiting...")
-                elif current_status == "yellow_light":
+                elif "yellow_light" in raw_status:
                     if green_count > 0: rospy.loginfo("Status changed to YELLOW, reset count.")
                     green_count = 0
                     rospy.loginfo_throttle(0.5, "Seeing Yellow Light, waiting...")
                 else:
                     if green_count > 0:
-                        rospy.loginfo("Traffic light status changed to %s, resetting count." % current_status)
+                        rospy.loginfo("Traffic light status changed to %s, resetting count." % raw_status)
                     green_count = 0
-                    rospy.loginfo_throttle(0.5, "Waiting for green... Current: %s" % current_status)
+                    rospy.loginfo_throttle(0.5, "Waiting for green... Current: %s" % raw_status)
 
                 # 连续 5 帧绿灯则放行
                 if green_count >= 2:
@@ -102,7 +111,12 @@ class TaskHandler:
                 rospy.sleep(0.05) # 降低休眠时间，提高响应速度
             return False
 
-        timeout = float(task_timeout) if task_timeout is not None else float(cfg.default_task_timeout)
+        # 特殊处理 fallen_vehicle 任务的超时时间
+        if task_type == "fallen_vehicle":
+            timeout = 60.0
+        else:
+            timeout = float(task_timeout) if task_timeout is not None else float(cfg.default_task_timeout)
+            
         rospy.loginfo("Waiting for '%s' done, timeout %.1fs..." % (task_type, timeout))
         start = time()
         while not rospy.is_shutdown() and not state.shutdown_requested:

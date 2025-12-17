@@ -221,6 +221,11 @@ class YOLONode:
                     frame = self.current_frame.copy()
                     self.last_processed_id = self.current_frame_id
             
+            # 性能优化：如果无头模式且无活跃模型，跳过图像处理
+            if not self.use_gui and not (self.mode == 2 and self.active_model):
+                rate.sleep()
+                continue
+
             if frame is not None:
                 display_img = frame.copy()
                 inference_time = 0.0
@@ -275,71 +280,75 @@ class YOLONode:
                             if config.PRINT_TIMING_INFO:
                                 print(f"[\033[35mYOLO Driver\033[0m] {self.active_model_name} timing: {json.dumps(timing_dict)} (ms)")
                         
-                        # 可视化绘制
-                        for i, box in enumerate(boxes):
-                            class_id = int(class_ids[i])
-                            score = float(scores[i])
-                            
-                            # 默认颜色
-                            color = (0, 255, 0)
-                            
-                            # 针对娃娃/人物的特殊逻辑
-                            if self.active_model_name == "doll":
-                                # 假设有 class_names 属性
+                        # 仅在需要显示或保存图片时进行绘制
+                        need_draw = self.use_gui or (config.SAVE_RESULT_IMAGES and self.is_ros_triggered and len(boxes) > 0)
+                        
+                        if need_draw:
+                            # 可视化绘制
+                            for i, box in enumerate(boxes):
+                                class_id = int(class_ids[i])
+                                score = float(scores[i])
+                                
+                                # 默认颜色
+                                color = (0, 255, 0)
+                                
+                                # 针对娃娃/人物的特殊逻辑
+                                if self.active_model_name == "doll":
+                                    # 假设有 class_names 属性
+                                    if hasattr(current_model, "class_names") and 0 <= class_id < len(current_model.class_names):
+                                        class_name = current_model.class_names[class_id]
+                                        # 逻辑: 社区人员 vs 非社区人员
+                                        # 假设 'bad' 前缀表示非社区人员 (红色)，其他为社区人员 (绿色)
+                                        if class_name.startswith("bad"):
+                                            color = (0, 0, 255) # 红色
+                                        else:
+                                            color = (0, 255, 0) # 绿色
+                                    else:
+                                        # 如果没有 class_names，默认绿色
+                                        color = (0, 255, 0)
+                                
+                                cv2.rectangle(
+                                    display_img,
+                                    (int(box[0]), int(box[1])),
+                                    (int(box[2]), int(box[3])),
+                                    color,
+                                    3, # 粗线条
+                                )
+                                
                                 if hasattr(current_model, "class_names") and 0 <= class_id < len(current_model.class_names):
                                     class_name = current_model.class_names[class_id]
-                                    # 逻辑: 社区人员 vs 非社区人员
-                                    # 假设 'bad' 前缀表示非社区人员 (红色)，其他为社区人员 (绿色)
-                                    if class_name.startswith("bad"):
-                                        color = (0, 0, 255) # 红色
-                                    else:
-                                        color = (0, 255, 0) # 绿色
                                 else:
-                                    # 如果没有 class_names，默认绿色
-                                    color = (0, 255, 0)
-                            
-                            cv2.rectangle(
-                                display_img,
-                                (int(box[0]), int(box[1])),
-                                (int(box[2]), int(box[3])),
-                                color,
-                                3, # 粗线条
-                            )
-                            
-                            if hasattr(current_model, "class_names") and 0 <= class_id < len(current_model.class_names):
-                                class_name = current_model.class_names[class_id]
-                            else:
-                                class_name = str(class_id)
-                            label = f"{class_name}: {score:.2f}"
-                            
-                            # 更大的字体
-                            cv2.putText(
-                                display_img,
-                                label,
-                                (int(box[0]), int(box[1] - 10)),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                1.0, # 字体缩放
-                                color,
-                                2,
-                            )
+                                    class_name = str(class_id)
+                                label = f"{class_name}: {score:.2f}"
+                                
+                                # 更大的字体
+                                cv2.putText(
+                                    display_img,
+                                    label,
+                                    (int(box[0]), int(box[1] - 10)),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    1.0, # 字体缩放
+                                    color,
+                                    2,
+                                )
 
-                        # 保存最佳结果图片 (仅在 ROS 触发时)
-                        if config.SAVE_RESULT_IMAGES and self.is_ros_triggered and len(boxes) > 0:
-                            # 计算当前帧得分 (例如最大置信度)
-                            current_score = max(scores) if len(scores) > 0 else 0
-                            
-                            if current_score > self.best_score:
-                                self.best_score = current_score
-                                try:
-                                    if not os.path.exists(config.SAVE_RESULT_DIR):
-                                        os.makedirs(config.SAVE_RESULT_DIR)
-                                    
-                                    # 保存/覆盖本次会话的最佳图片
-                                    filename = f"yolo_{self.active_model_name}_{self.task_session_id}_best.jpg"
-                                    filepath = os.path.join(config.SAVE_RESULT_DIR, filename)
-                                    cv2.imwrite(filepath, display_img)
-                                except Exception as e:
-                                    rospy.logwarn(f"Failed to save image: {e}")
+                            # 保存最佳结果图片 (仅在 ROS 触发时)
+                            if config.SAVE_RESULT_IMAGES and self.is_ros_triggered and len(boxes) > 0:
+                                # 计算当前帧得分 (例如最大置信度)
+                                current_score = max(scores) if len(scores) > 0 else 0
+                                
+                                if current_score > self.best_score:
+                                    self.best_score = current_score
+                                    try:
+                                        if not os.path.exists(config.SAVE_RESULT_DIR):
+                                            os.makedirs(config.SAVE_RESULT_DIR)
+                                        
+                                        # 保存/覆盖本次会话的最佳图片
+                                        filename = f"yolo_{self.active_model_name}_{self.task_session_id}_best.jpg"
+                                        filepath = os.path.join(config.SAVE_RESULT_DIR, filename)
+                                        cv2.imwrite(filepath, display_img)
+                                    except Exception as e:
+                                        rospy.logwarn(f"Failed to save image: {e}")
                 
                 # 计算 FPS
                 self.fps_frame_count += 1
@@ -348,13 +357,13 @@ class YOLONode:
                     self.fps_frame_count = 0
                     self.fps_start_time = time.time()
                 
-                # 绘制信息叠加层
-                mode_str = ["Freeze", "Pause", "Auto"][self.mode]
-                model_str = self.active_model_name if self.active_model_name else "NONE"
-                info_text = f"FPS: {self.current_fps:.1f} | Latency: {inference_time:.1f}ms | {mode_str} | Model: {model_str}"
-                cv2.putText(display_img, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-
                 if self.use_gui:
+                    # 绘制信息叠加层
+                    mode_str = ["Freeze", "Pause", "Auto"][self.mode]
+                    model_str = self.active_model_name if self.active_model_name else "NONE"
+                    info_text = f"FPS: {self.current_fps:.1f} | Latency: {inference_time:.1f}ms | {mode_str} | Model: {model_str}"
+                    cv2.putText(display_img, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
                     cv2.imshow("YOLO View", display_img)
                     key = cv2.waitKey(1) & 0xFF
                     if key == ord('q'):

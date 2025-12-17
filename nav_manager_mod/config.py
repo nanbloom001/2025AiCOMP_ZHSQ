@@ -61,9 +61,9 @@ class NavConfig:
         startup_delay (float): 启动延迟时间（秒）。
         keyboard_enabled (bool): 是否启用键盘控制。
     """
-    default_nav_timeout: float = 25.0
+    default_nav_timeout: float = 60.0
     default_task_timeout: float = 15.0
-    post_task_pause: float = 1.0
+    post_task_pause: float = 0.1
     startup_delay: float = 5.0
     keyboard_enabled: bool = True
 

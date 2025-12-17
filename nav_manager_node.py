@@ -23,7 +23,6 @@ from nav_manager_mod.task_handler import TaskHandler
 
 # --- Debug Settings ---
 PRINT_NAV_TIMING = True
-
 class NavLogger:
     def __init__(self):
         self.log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
@@ -306,7 +305,7 @@ class NavigationManager:
                         break
                     
                     rospy.loginfo("Task '%s' succeeded." % task_item.type)
-                    rospy.sleep(0.5) # 任务间短暂间隔
+                    rospy.sleep(0.1) # 任务间短暂间隔 0.5 --> 0.1
 
                 rospy.sleep(self.cfg.post_task_pause)
                 self.state.current_goal_index += 1

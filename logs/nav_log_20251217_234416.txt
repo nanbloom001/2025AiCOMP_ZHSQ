@@ -1,0 +1,5 @@
+Navigation Log Started at 20251217_234416
+==================================================
+[23:44:33.676] NAV Goal 1: Time=0m 11.89s Status=Success
+[23:44:58.717] TASK Goal 1 [traffic_light]: Time=0m 25.04s Result=green
+[23:44:59.837] TOTAL PROCESS TIME: 0m 38.06s

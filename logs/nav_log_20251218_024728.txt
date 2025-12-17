@@ -1,0 +1,71 @@
+Navigation Log Started at 20251218_024728
+==================================================
+[02:47:39.117] NAV Goal 1: Time=0m 5.55s Status=Success
+[02:47:44.923] TASK Goal 1 [traffic_light]: Time=0m 5.80s Result=green_light
+[02:48:00.325] NAV Goal 2: Time=0m 14.29s Status=Success
+[02:48:02.505] TASK Goal 2 [doll]: Time=0m 2.18s Result=7 | timing={"pre": 36.18, "infer": 1894.2, "post": 30.51, "total": 1960.9} | duration_ms=2050.11
+[02:48:08.863] NAV Goal 3: Time=0m 5.25s Status=Success
+[02:48:08.871] TASK Goal 3 [none]: Time=0m 0.00s Result=None
+[02:48:21.066] NAV Goal 4: Time=0m 11.09s Status=Success
+[02:48:21.069] TASK Goal 4 [none]: Time=0m 0.00s Result=None
+[02:48:27.923] NAV Goal 5: Time=0m 5.75s Status=Success
+[02:48:27.929] TASK Goal 5 [none]: Time=0m 0.00s Result=None
+[02:48:39.886] NAV Goal 6: Time=0m 10.84s Status=Success
+[02:48:41.827] TASK Goal 6 [doll]: Time=0m 1.94s Result=3 | timing={"pre": 36.96, "infer": 1760.82, "post": 0.25, "total": 1798.03} | duration_ms=1884.69
+[02:48:48.576] NAV Goal 7: Time=0m 5.64s Status=Success
+[02:48:48.582] TASK Goal 7 [none]: Time=0m 0.00s Result=None
+[02:48:53.731] NAV Goal 8: Time=0m 4.04s Status=Success
+[02:48:53.863] TASK Goal 8 [sign]: Time=0m 0.13s Result=success
+[02:48:59.765] NAV Goal 9: Time=0m 4.79s Status=Success
+[02:48:59.770] TASK Goal 9 [none]: Time=0m 0.00s Result=None
+[02:49:11.592] NAV Goal 10: Time=0m 10.71s Status=Success
+[02:49:11.596] TASK Goal 10 [none]: Time=0m 0.00s Result=None
+[02:49:17.538] NAV Goal 11: Time=0m 4.83s Status=Success
+[02:49:19.357] TASK Goal 11 [doll]: Time=0m 1.81s Result=2 | timing={"pre": 32.56, "infer": 1585.58, "post": 0.24, "total": 1618.39} | duration_ms=1713.24
+[02:49:27.558] NAV Goal 12: Time=0m 7.09s Status=Success
+[02:49:29.646] TASK Goal 12 [doll]: Time=0m 2.08s Result=6 | timing={"pre": 11.04, "infer": 1849.25, "post": 0.25, "total": 1860.54} | duration_ms=2023.17
+[02:49:36.201] NAV Goal 13: Time=0m 5.45s Status=Success
+[02:49:36.205] TASK Goal 13 [none]: Time=0m 0.00s Result=None
+[02:49:44.039] NAV Goal 14: Time=0m 6.72s Status=Success
+[02:49:49.237] TASK Goal 14 [fire]: Time=0m 5.19s Result=count=7 text=艺术大厦 | timing={"wait_yolo_ms": 866.66, "yolo_algo_ms": {"pre": 12.77, "infer": 722.93, "post": 48.6, "total": 784.3}, "ocr_algo_ms": {"pre": 8.11, "infer": 4101.77, "post": 0.03, "total": 4109.92}, "total_ctrl_ms": 5121.24}
+[02:49:55.801] NAV Goal 15: Time=0m 5.46s Status=Success
+[02:49:55.809] TASK Goal 15 [none]: Time=0m 0.00s Result=None
+[02:50:14.992] NAV Goal 16: Time=0m 18.07s Status=Success
+[02:50:16.332] TASK Goal 16 [doll]: Time=0m 1.34s Result=2
+[02:50:18.056] NAV Goal 17: Time=0m 0.61s Status=Success
+[02:50:18.061] TASK Goal 17 [none]: Time=0m 0.00s Result=None
+[02:50:28.718] NAV Goal 18: Time=0m 9.55s Status=Success
+[02:50:32.699] TASK Goal 18 [fire]: Time=0m 3.98s Result=count=9 text=智慧大厦 | timing={"wait_yolo_ms": 739.9, "yolo_algo_ms": {"pre": 29.89, "infer": 689.0, "post": 0.24, "total": 719.13}, "ocr_algo_ms": {"pre": 1.14, "infer": 3070.19, "post": 0.03, "total": 3071.37}, "total_ctrl_ms": 3925.97}
+[02:50:38.988] NAV Goal 19: Time=0m 5.18s Status=Success
+[02:50:39.525] TASK Goal 19 [traffic_light]: Time=0m 0.53s Result=green_light
+[02:50:57.936] NAV Goal 20: Time=0m 17.30s Status=Success
+[02:50:57.944] TASK Goal 20 [none]: Time=0m 0.00s Result=None
+[02:51:12.488] NAV Goal 21: Time=0m 13.43s Status=Success
+[02:51:15.527] TASK Goal 21 [plate]: Time=0m 3.03s Result=学ABCDEF | timing={"pre": 3.1, "infer": 2840.9, "post": 0.03, "total": 2844.03} | duration_ms=2938.38
+[02:51:22.379] NAV Goal 22: Time=0m 5.74s Status=Success
+[02:51:22.384] TASK Goal 22 [none]: Time=0m 0.00s Result=None
+[02:51:35.628] NAV Goal 23: Time=0m 12.13s Status=Success
+[02:51:39.135] TASK Goal 23 [plate]: Time=0m 3.50s Result=学ABCDEK | timing={"pre": 1.79, "infer": 3384.34, "post": 0.03, "total": 3386.16} | duration_ms=3487.81
+[02:51:45.533] NAV Goal 24: Time=0m 5.28s Status=Success
+[02:51:45.538] TASK Goal 24 [none]: Time=0m 0.00s Result=None
+[02:51:54.139] NAV Goal 25: Time=0m 7.49s Status=Success
+[02:51:56.692] TASK Goal 25 [garbage]: Time=0m 2.55s Result=done:识别完成，可回收垃圾桶状态为打开，垃圾为香蕉皮，投放错误，厨余垃圾桶状态为打开，垃圾为甘蔗，投放正确，其他垃圾桶状态为打开，有害垃圾桶状态为关闭，垃圾为毛巾，投放错误 | timing={"bin_det": 940.38, "trash_det": 1012.1, "classify": 342.75, "post": 53.53, "total": 2348.76} | ctrl_timing={"wait_yolo": 2.493, "wait_voice": 0.006}
+[02:52:02.346] NAV Goal 26: Time=0m 4.55s Status=Success
+[02:52:02.353] TASK Goal 26 [none]: Time=0m 0.00s Result=None
+[02:52:11.870] NAV Goal 27: Time=0m 8.41s Status=Success
+[02:52:16.820] TASK Goal 27 [plate]: Time=0m 4.94s Result=学ABCDEF | timing={"pre": 7.68, "infer": 4776.57, "post": 0.06, "total": 4784.31} | duration_ms=4893.49
+[02:52:23.713] NAV Goal 28: Time=0m 5.79s Status=Success
+[02:52:23.721] TASK Goal 28 [none]: Time=0m 0.00s Result=None
+[02:52:39.019] NAV Goal 29: Time=0m 14.18s Status=Success
+[02:52:46.736] TASK Goal 29 [fire]: Time=0m 7.71s Result=count=7 text=体育大厦 | timing={"wait_yolo_ms": 1315.07, "yolo_algo_ms": {"pre": 31.85, "infer": 1174.51, "post": 2.34, "total": 1208.7}, "ocr_algo_ms": {"pre": 13.79, "infer": 6257.82, "post": 0.05, "total": 6271.66}, "total_ctrl_ms": 7649.97}
+[02:52:52.876] NAV Goal 30: Time=0m 5.03s Status=Success
+[02:52:52.883] TASK Goal 30 [none]: Time=0m 0.00s Result=None
+[02:53:04.636] NAV Goal 31: Time=0m 10.64s Status=Success
+[02:53:23.181] TASK Goal 31 [fallen_vehicle]: Time=0m 18.54s Result=detected count=7 | timing={"stitch": 8187.82, "infer": {"pre": 11.62, "infer": 1282.8, "post": 12.93, "total": 1307.35}}
+[02:53:29.621] NAV Goal 32: Time=0m 5.33s Status=Success
+[02:53:29.629] TASK Goal 32 [none]: Time=0m 0.00s Result=None
+[02:53:41.470] NAV Goal 33: Time=0m 10.72s Status=Success
+[02:53:41.475] TASK Goal 33 [none]: Time=0m 0.00s Result=None
+[02:53:47.277] NAV Goal 34: Time=0m 4.69s Status=Success
+[02:53:47.284] TASK Goal 34 [none]: Time=0m 0.00s Result=None
+[02:53:48.389] TOTAL PROCESS TIME: 6m 14.82s

@@ -31,6 +31,8 @@ class FireTask:
         # Timers
         self.yolo_timer = None
         self.ocr_timer = None
+        
+        self.best_ocr_result = None # (text, dist)
 
     def start(self, callback_func, status_callback=None, seq_id=0):
         """任务开始"""
@@ -39,6 +41,7 @@ class FireTask:
         self.state = "FIND_FIRE"
         self.fire_info = {"count": 0, "text": "未知区域"}
         self.receipt_event.clear()
+        self.best_ocr_result = None
         
         self.start_time = time.time()
         self.yolo_done_time = 0
@@ -187,29 +190,43 @@ class FireTask:
     def switch_to_ocr(self):
         """切换到 OCR 阶段"""
         self.state = "READ_TEXT"
+        rospy.loginfo("[FireTask] Switching to OCR state. Waiting for text...")
         
         # 启动 OCR
         self.ocr_sub = rospy.Subscriber("/vision/driver/ocr/result", String, self.on_ocr_data)
         self.ocr_pub.publish("start")
         
-        # 启动 OCR 超时计时器
-        self.ocr_timer = threading.Timer(3.0, self.on_ocr_timeout)
+        # 启动 OCR 超时计时器 (增加到 15s 以防止 OCR 处理过慢)
+        self.ocr_timer = threading.Timer(15.0, self.on_ocr_timeout)
         self.ocr_timer.start()
 
     def on_ocr_timeout(self):
         """OCR 超时处理"""
         if not self.active or self.state != "READ_TEXT": return
         
-        rospy.logwarn("[FireTask] OCR timeout. Broadcasting result.")
+        final_text = "未知区域"
+        if self.best_ocr_result:
+            final_text = self.best_ocr_result[0]
+            rospy.logwarn(f"[FireTask] OCR timeout. Using best candidate: {final_text}")
+        else:
+            rospy.logwarn("[FireTask] OCR timeout. No valid text found (best_ocr_result is None).")
         
+        self.finish_ocr(final_text)
+
+    def finish_ocr(self, text):
+        """结束 OCR 阶段并广播结果"""
         # 停止 OCR
         self.ocr_pub.publish("stop")
         if self.ocr_sub:
             self.ocr_sub.unregister()
             self.ocr_sub = None
             
-        # 播报结果
-        self.broadcast_result(text="未知区域")
+        # 取消计时器
+        if self.ocr_timer:
+            self.ocr_timer.cancel()
+            self.ocr_timer = None
+            
+        self.broadcast_result(text=text)
 
     def fuzzy_correct_text(self, text):
         """
@@ -241,58 +258,43 @@ class FireTask:
             data = json.loads(msg.data)
             texts = data.get("texts", [])
             boxes = data.get("boxes", [])
+            img_w = data.get("width", 640)
+            img_h = data.get("height", 480)
             self.ocr_timing = data.get("timing", {})
             
-            # 取消 OCR 超时
-            if self.ocr_timer:
-                self.ocr_timer.cancel()
-                self.ocr_timer = None
-            
-            # 只要收到数据（哪怕是空的），就停止 OCR 并处理
-            # 立即停止 OCR
-            self.ocr_pub.publish("stop")
-            if self.ocr_sub:
-                self.ocr_sub.unregister()
-                self.ocr_sub = None
+            if not texts:
+                rospy.loginfo_throttle(1.0, "[FireTask] Received empty OCR result.")
+                return # 忽略空结果，继续等待
 
-            final_text = "未知区域"
-            if texts:
-                # 过滤与择优逻辑
-                candidates = []
-                
-                for i, text in enumerate(texts):
-                    # 使用模糊匹配纠错
-                    corrected = self.fuzzy_correct_text(text)
-                    if corrected:
-                        dist = float('inf')
-                        # 计算距离中心点的距离
-                        if i < len(boxes):
-                            box = boxes[i]
-                            # 假设 box 是点列表 [[x,y], ...]
-                            if box:
-                                try:
-                                    xs = [p[0] for p in box]
-                                    ys = [p[1] for p in box]
-                                    cx = sum(xs) / len(xs)
-                                    cy = sum(ys) / len(ys)
-                                    # 假设图像分辨率 640x480
-                                    dist = math.hypot(cx - 320, cy - 240)
-                                except Exception:
-                                    pass
-                        candidates.append((corrected, dist))
-                
-                if candidates:
-                    # 按距离排序，取最近的
-                    candidates.sort(key=lambda x: x[1])
-                    final_text = candidates[0][0]
-                    rospy.loginfo(f"[FireTask] Selected text: {final_text} (Dist: {candidates[0][1]:.1f})")
-                else:
-                    rospy.loginfo(f"[FireTask] No valid '大厦' text found in: {texts}")
-            else:
-                rospy.loginfo("[FireTask] OCR returned empty result.")
+            rospy.loginfo(f"[FireTask] Received OCR texts: {texts}")
 
-            self.fire_info["text"] = final_text
-            self.broadcast_result(text=final_text)
+            for i, text in enumerate(texts):
+                # 计算距离中心点的距离
+                dist = float('inf')
+                if i < len(boxes):
+                    box = boxes[i]
+                    if box:
+                        try:
+                            xs = [p[0] for p in box]
+                            ys = [p[1] for p in box]
+                            cx = sum(xs) / len(xs)
+                            cy = sum(ys) / len(ys)
+                            # 使用动态分辨率计算中心距离
+                            dist = math.hypot(cx - img_w/2, cy - img_h/2)
+                        except Exception:
+                            pass
+
+                # 1. 强匹配检查 (包含"大厦")
+                corrected = self.fuzzy_correct_text(text)
+                if corrected:
+                    rospy.loginfo(f"[FireTask] Strong match found: {corrected}")
+                    self.finish_ocr(corrected)
+                    return
+
+                # 2. 弱匹配更新 (保留最近的任意文本)
+                if self.best_ocr_result is None or dist < self.best_ocr_result[1]:
+                    self.best_ocr_result = (text, dist)
+                    rospy.loginfo(f"[FireTask] Updated best candidate: {text} (dist={dist:.1f})")
                 
         except json.JSONDecodeError:
             pass
