@@ -1,0 +1,69 @@
+Navigation Log Started at 20251218_112825
+==================================================
+[11:28:45.668] NAV Goal 1: Time=0m 14.77s Status=Success
+[11:28:57.201] TASK Goal 1 [traffic_light]: Time=0m 11.53s Result=TIMEOUT/FAILED
+[11:29:13.623] NAV Goal 2: Time=0m 16.41s Status=Success
+[11:29:13.882] TASK Goal 2 [doll]: Time=0m 0.25s Result=snapshot_taken
+[11:29:18.554] NAV Goal 3: Time=0m 4.67s Status=Success
+[11:29:18.558] TASK Goal 3 [none]: Time=0m 0.00s Result=None
+[11:29:22.941] NAV Goal 4: Time=0m 4.38s Status=Success
+[11:29:22.949] TASK Goal 4 [none]: Time=0m 0.00s Result=None
+[11:29:28.028] NAV Goal 5: Time=0m 5.08s Status=Success
+[11:29:28.031] TASK Goal 5 [none]: Time=0m 0.00s Result=None
+[11:29:41.297] NAV Goal 6: Time=0m 13.26s Status=Success
+[11:29:41.432] TASK Goal 6 [doll]: Time=0m 0.13s Result=snapshot_taken
+[11:29:46.714] NAV Goal 7: Time=0m 5.28s Status=Success
+[11:29:46.722] TASK Goal 7 [none]: Time=0m 0.00s Result=None
+[11:29:50.979] NAV Goal 8: Time=0m 4.24s Status=Success
+[11:29:51.119] TASK Goal 8 [sign]: Time=0m 0.14s Result=success
+[11:29:55.924] NAV Goal 9: Time=0m 4.80s Status=Success
+[11:29:55.927] TASK Goal 9 [none]: Time=0m 0.00s Result=None
+[11:30:09.518] NAV Goal 10: Time=0m 13.58s Status=Success
+[11:30:09.530] TASK Goal 10 [none]: Time=0m 0.00s Result=None
+[11:30:14.479] NAV Goal 11: Time=0m 4.93s Status=Success
+[11:30:14.620] TASK Goal 11 [doll]: Time=0m 0.14s Result=snapshot_taken
+[11:30:21.242] NAV Goal 12: Time=0m 6.61s Status=Success
+[11:30:21.371] TASK Goal 12 [doll]: Time=0m 0.13s Result=snapshot_taken
+[11:30:26.710] NAV Goal 13: Time=0m 5.33s Status=Success
+[11:30:26.713] TASK Goal 13 [none]: Time=0m 0.00s Result=None
+[11:30:31.453] NAV Goal 14: Time=0m 4.73s Status=Success
+[11:30:31.596] TASK Goal 14 [fire]: Time=0m 0.14s Result=snapshot_taken
+[11:30:36.801] NAV Goal 15: Time=0m 5.19s Status=Success
+[11:30:36.803] TASK Goal 15 [none]: Time=0m 0.00s Result=None
+[11:30:49.965] NAV Goal 16: Time=0m 13.15s Status=Success
+[11:30:50.226] TASK Goal 16 [doll]: Time=0m 0.26s Result=snapshot_taken
+[11:30:51.003] NAV Goal 17: Time=0m 0.77s Status=Success
+[11:30:51.006] TASK Goal 17 [none]: Time=0m 0.00s Result=None
+[11:30:57.649] NAV Goal 18: Time=0m 6.64s Status=Success
+[11:30:57.798] TASK Goal 18 [fire]: Time=0m 0.14s Result=snapshot_taken
+[11:31:03.035] NAV Goal 19: Time=0m 5.23s Status=Success
+[11:31:15.144] TASK Goal 19 [traffic_light]: Time=0m 12.10s Result=TIMEOUT/FAILED
+[11:31:29.132] NAV Goal 20: Time=0m 13.97s Status=Success
+[11:31:29.143] TASK Goal 20 [none]: Time=0m 0.00s Result=None
+[11:31:34.688] NAV Goal 21: Time=0m 5.54s Status=Success
+[11:31:34.947] TASK Goal 21 [plate]: Time=0m 0.26s Result=snapshot_taken
+[11:31:40.636] NAV Goal 22: Time=0m 5.68s Status=Success
+[11:31:40.641] TASK Goal 22 [none]: Time=0m 0.00s Result=None
+[11:31:53.052] NAV Goal 23: Time=0m 12.40s Status=Success
+[11:31:53.185] TASK Goal 23 [plate]: Time=0m 0.13s Result=snapshot_taken
+[11:31:58.044] NAV Goal 24: Time=0m 4.85s Status=Success
+[11:31:58.047] TASK Goal 24 [none]: Time=0m 0.00s Result=None
+[11:32:05.800] NAV Goal 25: Time=0m 7.75s Status=Success
+[11:32:05.932] TASK Goal 25 [garbage]: Time=0m 0.13s Result=snapshot_taken
+[11:32:10.873] NAV Goal 26: Time=0m 4.93s Status=Success
+[11:32:10.879] TASK Goal 26 [none]: Time=0m 0.00s Result=None
+[11:32:23.013] NAV Goal 27: Time=0m 12.12s Status=Success
+[11:32:23.142] TASK Goal 27 [plate]: Time=0m 0.13s Result=snapshot_taken
+[11:32:28.022] NAV Goal 28: Time=0m 4.87s Status=Success
+[11:32:28.025] TASK Goal 28 [none]: Time=0m 0.00s Result=None
+[11:32:41.537] NAV Goal 29: Time=0m 13.51s Status=Success
+[11:32:41.797] TASK Goal 29 [fire]: Time=0m 0.26s Result=snapshot_taken
+[11:32:46.973] NAV Goal 30: Time=0m 5.17s Status=Success
+[11:32:46.976] TASK Goal 30 [none]: Time=0m 0.00s Result=None
+[11:32:57.834] NAV Goal 31: Time=0m 10.85s Status=Success
+[11:33:09.980] TASK Goal 31 [fallen_vehicle]: Time=0m 12.14s Result=detected count=8 | timing={"stitch": 2805.81, "infer": {"pre": 5.76, "infer": 326.21, "post": 2.28, "total": 334.25}}
+[11:33:23.004] NAV Goal 32: Time=0m 13.01s Status=Success
+[11:33:23.017] TASK Goal 32 [none]: Time=0m 0.00s Result=None
+[11:33:40.412] NAV Goal 33: Time=0m 17.39s Status=Success
+[11:33:40.414] TASK Goal 33 [none]: Time=0m 0.00s Result=None
+[11:33:40.416] TOTAL PROCESS TIME: 5m 9.52s
