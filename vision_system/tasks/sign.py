@@ -4,6 +4,13 @@ import time
 import threading
 from std_msgs.msg import String
 
+import config
+
+try:
+    from core.judge_client import get_client as get_judge_client
+except Exception:
+    from vision_system.core.judge_client import get_client as get_judge_client
+
 class SignTask:
     """
     Sign 任务控制器。
@@ -15,6 +22,11 @@ class SignTask:
         self.voice_pub = rospy.Publisher("/vision/driver/voice/cmd", String, queue_size=1)
         self.done_callback_func = None
         self.timer = None
+        # 2026 起结果直连裁判系统；语音保留为并行通道
+        self.judge = get_judge_client(
+            config=getattr(config, "JUDGE_CONFIG", None),
+            node_name="vision_master",
+            logger=rospy.loginfo)
 
     def start(self, callback_func, status_callback=None, seq_id=0):
         """任务开始"""
@@ -27,6 +39,13 @@ class SignTask:
         if self.done_callback_func:
             self.done_callback_func("done_sign success")
             self.done_callback_func = None
+
+        # 结果直连裁判系统：指示牌按停车处理，播报与上报并行
+        self.judge.report(
+            "sign",
+            {"action": "stop", "detail": "禁行指示牌，按停车处理"},
+            text="前方是禁行指示牌",
+            seq=int(seq_id or 0))
             
         # 2. 启动后台线程进行延时播报
         threading.Thread(target=self.delayed_voice_task).start()

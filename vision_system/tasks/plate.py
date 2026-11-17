@@ -9,6 +9,11 @@ from std_msgs.msg import String
 from sensor_msgs.msg import Image
 import config
 
+try:
+    from core.judge_client import get_client as get_judge_client
+except Exception:
+    from vision_system.core.judge_client import get_client as get_judge_client
+
 class PlateTask:
     """
     车牌识别任务控制器 (Snapshot Mode + Background Queue).
@@ -34,6 +39,11 @@ class PlateTask:
         self.ocr_event = threading.Event()
         self.voice_event = threading.Event()
         self.current_job_data = {}
+        # 2026 起结果直连裁判系统；语音保留为并行通道
+        self.judge = get_judge_client(
+            config=getattr(config, "JUDGE_CONFIG", None),
+            node_name="vision_master",
+            logger=rospy.loginfo)
 
     def start(self, callback_func, status_callback=None, seq_id=0):
         """任务开始"""
@@ -99,6 +109,12 @@ class PlateTask:
                 plate_eng = best_plate[1:]
                 parking_id = seq_id if seq_id > 0 else 1
                 
+                self.judge.report(
+                    "plate",
+                    {"parking_id": parking_id, "plate": best_plate},
+                    text="%d号停车场车牌号为%s" % (parking_id, best_plate),
+                    seq=self.current_seq_id)
+
                 cmd = {
                     "action": "dispatch",
                     "task": "car_plate",

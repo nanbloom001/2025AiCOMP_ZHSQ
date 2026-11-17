@@ -8,6 +8,11 @@ from sensor_msgs.msg import Image
 from collections import Counter
 import config
 
+try:
+    from core.judge_client import get_client as get_judge_client
+except Exception:
+    from vision_system.core.judge_client import get_client as get_judge_client
+
 class DollTask:
     """
     玩偶检测任务控制器 (Snapshot Mode + Background Queue).
@@ -37,6 +42,11 @@ class DollTask:
         # Global State for Doll Task (Accumulated across snapshots)
         self.block_a_results = set()
         self.block_b_results = set()
+        # 2026 起结果直连裁判系统；语音保留为并行通道
+        self.judge = get_judge_client(
+            config=getattr(config, "JUDGE_CONFIG", None),
+            node_name="vision_master",
+            logger=rospy.loginfo)
         self.target_classes = ['bad0', 'bad1', 'bad2', 'bad3', 'coffee', 'cook', 'dective', 'doctor', 'engineer', 'fireman', 'gardener', 'guitar', 'it', 'office', 'painter', 'photo', 'postman', 'professor', 'rapper', 'security', 'teacher']
 
     def start(self, done_callback, status_callback, seq_id=0):
@@ -153,6 +163,15 @@ class DollTask:
         voice_data = {
             "n1": n1, "n2": n2, "n3": n3, "n4": n4, "n5": n5
         }
+
+        self.judge.report(
+            "doll",
+            {"total": n1, "area_a": n2, "area_b": n3,
+             "outsider_a": n4, "outsider_b": n5,
+             "area_a_classes": sorted(self.block_a_results),
+             "area_b_classes": sorted(self.block_b_results)},
+            text="社区内共有%d人，其中A街%d人，B街%d人" % (n1, n2, n3),
+            seq=5)
         
         cmd = {
             "action": "dispatch",

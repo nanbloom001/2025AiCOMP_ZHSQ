@@ -2,6 +2,13 @@ import rospy
 import json
 import time
 from std_msgs.msg import String
+
+import config
+
+try:
+    from core.judge_client import get_client as get_judge_client
+except Exception:
+    from vision_system.core.judge_client import get_client as get_judge_client
 class TrafficLightTask:
     """
     交通灯任务控制器。
@@ -15,6 +22,13 @@ class TrafficLightTask:
         self.driver_sub = None 
         self.status_callback_func = None 
         self.done_callback_func = None
+        # 2026 起结果直连裁判系统；语音保留为并行通道
+        self.judge = get_judge_client(
+            config=getattr(config, "JUDGE_CONFIG", None),
+            node_name="vision_master",
+            logger=rospy.loginfo)
+        self.current_seq_id = 0
+        self.last_lamp = None
         
         # Load class names for 'lights' model
         # Default fallback if model_list not provided
@@ -28,6 +42,8 @@ class TrafficLightTask:
     def start(self, done_callback, status_callback, seq_id=0):
         """任务开始"""
         self.active = True
+        self.current_seq_id = int(seq_id or 0)
+        self.last_lamp = None
         self.status_callback_func = status_callback
         self.done_callback_func = done_callback
         # timing
@@ -83,6 +99,15 @@ class TrafficLightTask:
                 msg = f"status_traffic_light {found_status} | timing={json.dumps(timing)} | duration_ms={dur_ms}"
                 rospy.loginfo(f"[TrafficLightTask] Status: {found_status}, timing (driver): {json.dumps(timing)} (ms), duration_ms={dur_ms}")
                 self.status_callback_func(msg)
+
+            # 灯态变化时上报一次，避免逐帧刷屏
+            if found_status != "null" and found_status != self.last_lamp:
+                self.last_lamp = found_status
+                self.judge.report(
+                    "traffic_light",
+                    {"lamp": found_status, "junction": self.current_seq_id},
+                    text="路口%d识别为%s" % (self.current_seq_id, found_status),
+                    seq=self.current_seq_id)
 
             # 如果是绿灯，任务完成
             if found_status == "green_light" and self.done_callback_func:

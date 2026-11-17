@@ -9,6 +9,11 @@ from std_msgs.msg import String
 from sensor_msgs.msg import Image
 import config
 
+try:
+    from core.judge_client import get_client as get_judge_client
+except Exception:
+    from vision_system.core.judge_client import get_client as get_judge_client
+
 class FireTask:
     """
     火焰检测任务控制器 (Snapshot Mode + Background Queue).
@@ -43,6 +48,11 @@ class FireTask:
         
         # Data containers for current processing job
         self.current_job_data = {}
+        # 2026 起结果直连裁判系统；语音保留为并行通道
+        self.judge = get_judge_client(
+            config=getattr(config, "JUDGE_CONFIG", None),
+            node_name="vision_master",
+            logger=rospy.loginfo)
 
     def start(self, callback_func, status_callback=None, seq_id=0):
         """任务开始: 仅负责截图和入队"""
@@ -125,6 +135,12 @@ class FireTask:
             else:
                 rospy.loginfo("[FireTask] No fire detected, skipping OCR.")
             
+            self.judge.report(
+                "fire",
+                {"building": text, "count": count},
+                text="%s发现火灾隐患%d个" % (text, count),
+                seq=0)
+
             # --- Step 4: Voice Broadcast ---
             text = self.current_job_data["text"]
             count = self.current_job_data["fire_count"]

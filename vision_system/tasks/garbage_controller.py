@@ -7,6 +7,11 @@ from std_msgs.msg import String
 from sensor_msgs.msg import Image
 import config
 
+try:
+    from core.judge_client import get_client as get_judge_client
+except Exception:
+    from vision_system.core.judge_client import get_client as get_judge_client
+
 class GarbageController:
     """
     垃圾分类任务控制器 (Snapshot Mode + Background Queue).
@@ -36,6 +41,12 @@ class GarbageController:
         self.yolo_event = threading.Event()
         self.voice_event = threading.Event()
         self.current_job_data = {}
+        self.last_result = None
+        # 2026 起结果直连裁判系统；语音保留为并行通道
+        self.judge = get_judge_client(
+            config=getattr(config, "JUDGE_CONFIG", None),
+            node_name="vision_master",
+            logger=rospy.loginfo)
 
     def start(self, done_callback, status_callback, seq_id=0):
         """任务开始"""
@@ -92,6 +103,12 @@ class GarbageController:
             else:
                 rospy.logwarn("[GarbageController] YOLO timeout.")
                 
+            self.judge.report(
+                "garbage",
+                {"result": str(self.last_result or "")[:400], "seq": seq_id},
+                text=str(self.last_result or "垃圾桶识别完成"),
+                seq=seq_id)
+
             # Wait for Voice Receipt (GarbageTask sends the voice command)
             if self.voice_event.wait(timeout=10.0):
                 rospy.loginfo("[GarbageController] Voice receipt confirmed.")
@@ -103,6 +120,7 @@ class GarbageController:
 
     def on_driver_data(self, msg):
         data = msg.data
+        self.last_result = data
         # GarbageTask returns "done:..." or "voice:..."
         if data.startswith("voice:") or data.startswith("done:"):
             self.yolo_event.set()

@@ -1,6 +1,12 @@
+import re
 import rospy
 import threading
 import json
+
+try:
+    from core.judge_client import get_client as get_judge_client
+except Exception:
+    from vision_system.core.judge_client import get_client as get_judge_client
 from std_msgs.msg import String
 
 class FallenVehicleController:
@@ -15,6 +21,11 @@ class FallenVehicleController:
         self.voice_status_sub = None
         self.done_callback = None
         self.receipt_event = threading.Event()
+        # 2026 起结果直连裁判系统；语音保留为并行通道
+        self.judge = get_judge_client(
+            config=getattr(config, "JUDGE_CONFIG", None),
+            node_name="vision_master",
+            logger=rospy.loginfo)
 
     def start(self, done_callback, status_callback, seq_id=0):
         """启动任务"""
@@ -72,6 +83,13 @@ class FallenVehicleController:
                 self.driver_sub = None
 
     def wait_for_receipt_and_finish(self, result_data):
+        match = re.search(r"count=(\d+)", result_data or "")
+        count = int(match.group(1)) if match else 0
+        self.judge.report(
+            "fallen_vehicle",
+            {"fallen": count, "raw": str(result_data)[:300]},
+            text="停车区检测到倒伏电动车%d辆" % count,
+            seq=0)
         rospy.loginfo("[FallenVehicleController] Waiting for voice receipt...")
         if self.receipt_event.wait(timeout=2.0):
             rospy.loginfo("[FallenVehicleController] Receipt confirmed.")
