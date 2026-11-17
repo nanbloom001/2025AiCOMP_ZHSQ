@@ -41,6 +41,8 @@ from tasks.doll import DollTask
 from tasks.garbage_controller import GarbageController
 from tasks.fallen_vehicle_controller import FallenVehicleController
 from tasks.sign import SignTask
+from tasks.meter import MeterTask
+from tasks.temperature import TemperatureTask
 
 # Absolute paths to node scripts
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -164,6 +166,8 @@ class VisionMasterNode:
             "garbage": GarbageController(), 
             "fallen_vehicle": FallenVehicleController(),
             "sign": SignTask(),
+            "meter": MeterTask(),
+            "temperature": TemperatureTask(),
         }
         self.active_task_name = None
         

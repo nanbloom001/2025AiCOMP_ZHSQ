@@ -139,3 +139,69 @@ MODEL_LIST = [
         "class_names": ['bad0', 'bad1', 'bad2', 'bad3', 'coffee', 'cook', 'dective', 'doctor', 'engineer', 'fireman', 'gardener', 'guitar', 'it', 'office', 'painter', 'photo', 'postman', 'professor', 'rapper', 'security', 'teacher']
     },
 ]
+
+
+# =========================================================================
+# 2026 总决赛新增：裁判系统直连、站房仪表与楼宇异常温度
+# =========================================================================
+
+# 现场裁判系统通道。transport 可多选：udp / http / ros / file。
+# file 始终追加写入，断网时作为补交依据。
+# 地址以组委会现场公布为准，可用环境变量覆盖，无需改代码：
+#   AIC_JUDGE_HOST / AIC_JUDGE_PORT / AIC_JUDGE_URL
+JUDGE_CONFIG = {
+    "enabled": True,
+    "transport": ["udp", "file"],
+    "udp": {
+        "host": os.environ.get("AIC_JUDGE_HOST", "255.255.255.255"),
+        "port": int(os.environ.get("AIC_JUDGE_PORT", "9900")),
+    },
+    "http": {
+        "url": os.environ.get("AIC_JUDGE_URL", "http://127.0.0.1:8080/api/report"),
+        "timeout": 0.8,
+    },
+    "ros": {"topic": "/judge/report"},
+    "file": {"path": "~/.aic_judge_outbox/reports.jsonl"},
+    "team": "三人行必有我师焉",
+    "run_id_prefix": "AIC2026",
+    "retry": 3,
+}
+
+# 语音降级：2026 年起主通道是裁判系统，语音只作现场提示，
+# 置 True 时任务会在上报成功后额外播报一句。
+VOICE_MIRROR = False
+
+# ---- 站房仪表 ----
+# kind: digital（数字表，走 OCR）/ analog（指针表，走角度解算）/ auto
+# theta0_deg 与 theta_max_deg 为量程起止对应的指针方向，
+# 约定 0 度指向图像 +x，逆时针为正，现场标定时按表盘刻度实测填写。
+METER_DEFAULT = {
+    "kind": "auto",
+    "unit": "",
+    "r0": 0.0,
+    "r_max": 1.0,
+    "theta0_deg": -135.0,
+    "theta_max_deg": 135.0,
+    "tolerance": None,
+    "ocr_timeout": 8.0,
+}
+
+# 键为路点配置里的任务序号（Task("meter", n) 的 n）
+METER_TABLES = {
+    1: {"kind": "analog", "unit": "MPa", "r0": 0.0, "r_max": 1.6,
+        "theta0_deg": -135.0, "theta_max_deg": 135.0, "tolerance": 0.05},
+    2: {"kind": "digital", "unit": "kWh", "tolerance": 0.01},
+}
+
+# ---- 楼宇异常温度 ----
+TEMPERATURE_BUILDING = "D"
+# 有热成像设备时填写话题名，例如 "/thermal/image_raw"；留空则只用可见光
+THERMAL_TOPIC = ""
+TEMPERATURE_OCR_TIMEOUT = 8.0
+
+# 路点序号 -> 楼层标定。现场按立面照片标定后填写；
+# 留空时任务只上报 OCR 读到的楼层，读不到就上报 UNKNOWN_FLOOR。
+FLOOR_REGIONS = {
+    # 35: {"building": "D", "floor": 1},
+    # 36: {"building": "D", "floor": 2},
+}
